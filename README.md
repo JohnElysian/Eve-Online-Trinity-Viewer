@@ -4,8 +4,8 @@
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=00c2ff">
   </a>
-  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases">
-    <img alt="Downloads" src="https://img.shields.io/github/downloads/JohnElysian/Eve-Online-Trinity-Viewer/total?style=for-the-badge&color=7c3aed">
+  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.2/ElysianJessica-v0.2.zip">
+    <img alt="Downloads" src="https://img.shields.io/github/downloads/JohnElysian/Eve-Online-Trinity-Viewer/v0.2/total?style=for-the-badge&label=downloads&color=7c3aed&cacheSeconds=60">
   </a>
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=22c55e">
