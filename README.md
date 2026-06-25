@@ -15,12 +15,18 @@
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=LrjwBPszgYA">
-    <img alt="Watch Elysian Jessica on YouTube" src="https://img.youtube.com/vi/LrjwBPszgYA/maxresdefault.jpg" width="900">
+    <img alt="Elysian Jessica turret preview" src="docs/screenshots/1.png" width="900">
   </a>
 </p>
 
 <p align="center">
   <strong>A native Trinity-powered viewer for exploring EVE Online ships, structures, weapons, explosions, nebulas, and model animations.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=LrjwBPszgYA">
+    <img alt="Watch the demo on YouTube" src="https://img.shields.io/badge/Watch%20the%20demo-YouTube-ff0033?style=for-the-badge&logo=youtube&logoColor=white">
+  </a>
 </p>
 
 Jessica runs against your own installed EVE Online client and uses the same
@@ -47,16 +53,56 @@ Watch the v0.2 preview:
 
 [![Elysian Jessica Trinity Viewer preview](https://img.youtube.com/vi/LrjwBPszgYA/hqdefault.jpg)](https://www.youtube.com/watch?v=LrjwBPszgYA)
 
-## Gallery
+## Screenshots
 
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=LrjwBPszgYA">
-    <img alt="Jessica v0.2 preview" src="https://img.youtube.com/vi/LrjwBPszgYA/maxresdefault.jpg" width="720">
-  </a>
-</p>
+<table>
+  <tr>
+    <td width="50%">
+      <img alt="Native EVE explosion preview" src="docs/screenshots/7.png">
+      <br>
+      <strong>Authored explosions</strong><br>
+      Ship destruction effects and debris paths rendered through the installed
+      EVE client runtime.
+    </td>
+    <td width="50%">
+      <img alt="Stargate and nebula preview" src="docs/screenshots/4.png">
+      <br>
+      <strong>Structures and gates</strong><br>
+      Inspect ships, gates, stations, structures, and other SOF-driven scene
+      assets.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img alt="Close-up ship and booster preview" src="docs/screenshots/5.png">
+      <br>
+      <strong>Close inspection</strong><br>
+      Orbit, pan, and zoom in close enough to inspect hull details, boosters,
+      turret mounts, and lighting.
+    </td>
+    <td width="50%">
+      <img alt="Ship in nebula preview" src="docs/screenshots/8.png">
+      <br>
+      <strong>EVE nebula scenes</strong><br>
+      Cycle through real client nebula and lighting setups for cinematic asset
+      previews.
+    </td>
+  </tr>
+</table>
 
-Screenshots can be added under `docs/screenshots/` and linked directly from
-this section.
+<details>
+  <summary>Full screenshot gallery</summary>
+  <p align="center">
+    <img alt="Turret preview" src="docs/screenshots/1.png" width="420">
+    <img alt="Explosion preview" src="docs/screenshots/2.png" width="420">
+    <img alt="Missile preview" src="docs/screenshots/3.png" width="420">
+    <img alt="Gate preview" src="docs/screenshots/4.png" width="420">
+    <img alt="Booster preview" src="docs/screenshots/5.png" width="420">
+    <img alt="Close explosion preview" src="docs/screenshots/6.png" width="420">
+    <img alt="Wide explosion preview" src="docs/screenshots/7.png" width="420">
+    <img alt="Nebula preview" src="docs/screenshots/8.png" width="420">
+  </p>
+</details>
 
 ## Quick Start
 

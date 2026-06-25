@@ -130,7 +130,6 @@ CBN_SELCHANGE = 1
 EN_CHANGE = 0x0300
 
 CONTROL_PANEL_WIDTH = 430
-MAX_VISIBLE_SEARCH_RESULTS = 240
 SEARCH_DEBOUNCE_SECONDS = 0.16
 IDC_ASSET_LIST = 1001
 IDC_SEARCH = 1015
@@ -436,6 +435,8 @@ class LiveTrinityViewer(object):
         self.asset_search_blobs = []
         self.asset_search_names = []
         self.asset_search_words = []
+        self.asset_display_labels = []
+        self.asset_display_label_bytes = []
         self.search_first_character_index = {}
         self.search_candidate_index = {}
         self.filter_indexes = {}
@@ -596,10 +597,19 @@ class LiveTrinityViewer(object):
             if value is not None
         ])
 
+    def build_asset_display_label(self, entry):
+        return native_text("%s  |  %s  |  %s" % (
+            entry.get("name") or entry.get("typeID"),
+            entry.get("groupName") or "",
+            entry.get("sof", {}).get("race") or "",
+        ))
+
     def build_search_indexes(self):
         self.asset_search_blobs = []
         self.asset_search_names = []
         self.asset_search_words = []
+        self.asset_display_labels = []
+        self.asset_display_label_bytes = []
         self.search_first_character_index = {}
         self.search_candidate_index = {}
         self.filter_indexes = dict((name, set()) for _control_id, name in FILTER_CONTROLS)
@@ -607,9 +617,12 @@ class LiveTrinityViewer(object):
             blob = self.build_asset_search_blob(entry)
             name = native_text(entry.get("name") or "").lower()
             words = tuple(set(re.findall(r"[a-z0-9]+", blob)))
+            label = self.build_asset_display_label(entry)
             self.asset_search_blobs.append(blob)
             self.asset_search_names.append(name)
             self.asset_search_words.append(words)
+            self.asset_display_labels.append(label)
+            self.asset_display_label_bytes.append(len(label) + 1)
             for initial in set(word[0] for word in words if word):
                 self.search_first_character_index.setdefault(initial, set()).add(index)
             candidate_keys = set()
@@ -1104,9 +1117,7 @@ class LiveTrinityViewer(object):
                     ctypes.cast(buffer, ctypes.c_void_p).value,
                 )
                 return
-            self.displayed_catalog_indices = self.filtered_catalog_indices[
-                :MAX_VISIBLE_SEARCH_RESULTS
-            ]
+            self.displayed_catalog_indices = list(self.filtered_catalog_indices)
             if not self.displayed_catalog_indices:
                 buffer = ctypes.create_string_buffer("No matches")
                 self.control_buffers.append(buffer)
@@ -1121,16 +1132,18 @@ class LiveTrinityViewer(object):
                 listbox,
                 LB_INITSTORAGE,
                 len(self.displayed_catalog_indices),
-                len(self.displayed_catalog_indices) * 96,
+                sum(
+                    self.asset_display_label_bytes[index]
+                    for index in self.displayed_catalog_indices
+                    if 0 <= index < len(self.asset_display_label_bytes)
+                ),
             )
             for catalog_index in self.displayed_catalog_indices:
-                entry = self.catalog[catalog_index]
-                label = "%s  |  %s  |  %s" % (
-                    entry.get("name") or entry.get("typeID"),
-                    entry.get("groupName") or "",
-                    entry.get("sof", {}).get("race") or "",
-                )
-                buffer = ctypes.create_string_buffer(native_text(label))
+                if 0 <= catalog_index < len(self.asset_display_labels):
+                    label = self.asset_display_labels[catalog_index]
+                else:
+                    label = native_text(catalog_index)
+                buffer = ctypes.create_string_buffer(label)
                 self.control_buffers.append(buffer)
                 USER32.SendMessageA(
                     listbox,
@@ -1149,19 +1162,12 @@ class LiveTrinityViewer(object):
         finally:
             USER32.SendMessageA(listbox, WM_SETREDRAW, 1, 0)
             USER32.InvalidateRect(listbox, None, True)
-        visible_count = len(self.displayed_catalog_indices)
         total_count = len(self.filtered_catalog_indices)
-        suffix = (
-            " - showing first %s" % visible_count
-            if total_count > visible_count
-            else ""
-        )
         self.set_control_text(
             IDC_SEARCH_STATUS,
-            "%s match%s%s" % (
+            "%s match%s" % (
                 total_count,
                 "" if total_count == 1 else "es",
-                suffix,
             ),
         )
 
