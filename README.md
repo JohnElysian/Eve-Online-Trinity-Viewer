@@ -4,8 +4,8 @@
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=00c2ff">
   </a>
-  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.2/ElysianJessica-v0.2.zip">
-    <img alt="Download v0.2" src="https://img.shields.io/badge/download-v0.2-7c3aed?style=for-the-badge&logo=github&logoColor=white">
+  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3/ElysianJessica-v0.3.zip">
+    <img alt="Download v0.3" src="https://img.shields.io/badge/download-v0.3-7c3aed?style=for-the-badge&logo=github&logoColor=white">
   </a>
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=22c55e">
@@ -39,17 +39,21 @@ it reads them from your local EVE installation.
 - Searchable asset catalogue for ships, gates, stations, structures, drones,
   and other space objects.
 - Real EVE nebulas and lighting controls.
-- Authored model animation/state controls where a model exposes them.
+- SKIN material previews for supported ships.
+- Authored playable model animations where a model exposes them.
+- Native audio event previews for warp, gate, booster, and other shipped sound
+  events.
 - Real turret and launcher hardpoint mounting.
 - Dummy target preview with firing cycles.
 - Native projectile, beam, missile-trail, impact, booster, and explosion visual
   paths where the client asset supports them.
 - Close-up camera controls for inspecting tiny and huge models.
-- Local runtime catalogue generation from your own EVE client.
+- Automatic local runtime catalogue setup. Normal users do not need Elysian Eve,
+  ClientSDE, Node.js, or any data-sync knowledge.
 
 ## Demo
 
-Watch the v0.2 preview:
+Watch the preview:
 
 [![Elysian Jessica Trinity Viewer preview](https://img.youtube.com/vi/LrjwBPszgYA/hqdefault.jpg)](https://www.youtube.com/watch?v=LrjwBPszgYA)
 
@@ -115,8 +119,9 @@ Watch the v0.2 preview:
 StartTrinityViewer.bat
 ```
 
-On first launch Jessica will try to find your EVE install. If it cannot, choose
-the folder that contains `tq`, or choose the `tq` folder itself.
+On first launch Jessica will restore its bundled metadata catalogue, then try
+to find your EVE install. If it cannot, choose the folder that contains `tq`,
+or choose the `tq` folder itself.
 
 Jessica stores local settings and generated runtime files in:
 
@@ -135,9 +140,14 @@ StartTrinityViewer.bat -ResetClient
 - Windows.
 - A current EVE Online client installation.
 - PowerShell.
-- Node.js for catalogue generation when running directly from source. The
-  release zip includes a generated metadata catalogue, so most users do not
-  need Node.js.
+
+The repository includes a compressed viewer metadata catalogue at
+`catalog/catalog.json.gz`. Jessica restores this automatically into
+`runtime/catalog.json` when needed. It is metadata only; it does not contain EVE
+models, textures, audio, binaries, or game assets.
+
+Node.js is only needed for maintainers doing an internal catalogue rebuild from
+Elysian Eve's extracted ClientSDE data. Normal users do not need Node.js.
 
 Python 2.7 is prepared automatically when needed. If the bundled runtime is not
 present, Jessica downloads and extracts the official Python 2.7.18 runtime into
@@ -152,7 +162,6 @@ the local tool folder.
 - `Esc`: close the viewer.
 - `Space`: pause or resume animation.
 - `W`: cycle render modes.
-- `A`: run a known model activation path when available.
 - `B`: toggle boosters.
 - `N`: cycle nebula/background.
 - `L`: change lighting.
@@ -162,32 +171,38 @@ Inside the floating panel:
 
 - **Search** filters the local asset catalogue.
 - **Filter checkboxes** narrow by ships, gates, stations, structures,
-  published assets, animations, and explosions.
-- **Animation** lists model states/controllers/curves Jessica can discover.
+  published assets, playable animations, and explosions.
+- **SKIN** appears when the loaded model has shipped SKIN material options.
+- **Animation** lists playable authored animations, events, and curves Jessica
+  can discover.
 - **Weapon** selects turret or launcher families.
+- **Sound preview** plays curated client audio events through the native
+  `_audio2` runtime.
 - **Arm Max** mounts weapons on available turret hardpoints.
 - **Fire Dummy** spawns a target and cycles fire until stopped.
 - **Explode** plays the authored explosion resource when one is available.
 - **Nebula**, **Light**, **Post**, and **After FX** tune the scene.
 
-## Building A Local Catalogue
+## Runtime Catalogue
 
-The source repository does not include EVE assets or generated client data. The
-release zip includes a generated metadata catalogue for convenience; it contains
-viewer metadata and resource paths, not EVE models, textures, audio, binaries,
-or `ResFiles`.
+The source repository does not include EVE assets. It does include a compressed
+metadata catalogue for convenience; it contains viewer metadata, SKIN material
+choices, audio event names, and resource paths, not EVE models, textures,
+audio, binaries, or `ResFiles`.
 
-When running from source, Jessica can build its local runtime catalogue after
-you select an EVE client.
+If `runtime/catalog.json` is missing, corrupt, or contains no SOF assets,
+Jessica restores it from `catalog/catalog.json.gz` automatically. If that file
+is missing too, Jessica tries to download the same catalogue from the GitHub
+repository before showing an error.
 
-Manual rebuild:
+Maintainer-only manual rebuild:
 
-```bat
+```powershell
 node build_standalone_catalog.js --client-root C:\CCP\EVE\tq --output runtime\catalog.json
 ```
 
-The generated `runtime/catalog.json` is local runtime data and should not be
-committed to source control.
+That rebuild path expects Elysian Eve's internal extracted ClientSDE and
+newDatabase data. It is not required for normal users.
 
 ## What This Repository Does Not Include
 

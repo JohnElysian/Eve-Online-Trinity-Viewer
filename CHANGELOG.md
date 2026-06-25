@@ -1,5 +1,38 @@
 # Changelog
 
+## v0.3 - SKINs, Audio, and Self-Healing Catalogue
+
+Jessica v0.3 makes the public download much easier to run and expands the
+viewer metadata used by the native Trinity window.
+
+### Added
+
+- SKIN material selection for supported ships.
+- Native `_audio2` sound preview events for warp, gate, booster, and related
+  client audio.
+- A compressed `catalog/catalog.json.gz` metadata catalogue bundled with the
+  public source and release zip.
+- Launcher catalogue validation and automatic repair when `runtime/catalog.json`
+  is missing, corrupt, or contains no SOF assets.
+- Automatic catalogue download fallback from GitHub if the bundled compressed
+  catalogue is missing.
+
+### Changed
+
+- Normal users no longer need Elysian Eve, ClientSDE, Node.js, or data-sync
+  knowledge to start the viewer.
+- The animation filter now represents playable authored animation/event/curve
+  entries instead of broad no-op controller states.
+- The old visible Activate workflow has been removed from the UI.
+- The control panel is wider and better aligned for SKIN, animation, weapon,
+  and sound controls.
+
+### Notes
+
+- Requires a local EVE Online installation.
+- Python 2.7 can be prepared automatically by the launcher.
+- Node.js is only needed by maintainers doing an internal metadata rebuild.
+
 ## v0.2 - Jessica
 
 Jessica v0.2 is the first public-ready release.

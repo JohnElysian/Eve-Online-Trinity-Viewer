@@ -7,3 +7,4 @@ LICENSE text eol=lf
 *.md text eol=lf
 *.py text eol=lf
 *.txt text eol=lf
+*.gz binary

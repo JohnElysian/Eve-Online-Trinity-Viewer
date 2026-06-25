@@ -129,7 +129,7 @@ LBN_DBLCLK = 2
 CBN_SELCHANGE = 1
 EN_CHANGE = 0x0300
 
-CONTROL_PANEL_WIDTH = 430
+CONTROL_PANEL_WIDTH = 500
 SEARCH_DEBOUNCE_SECONDS = 0.16
 IDC_ASSET_LIST = 1001
 IDC_SEARCH = 1015
@@ -144,7 +144,6 @@ IDC_BOOSTERS = 1009
 IDC_POST = 1010
 IDC_AFTER = 1011
 IDC_EXPLODE = 1012
-IDC_ACTIVATE = 1014
 IDC_ARM_MAX = 1016
 IDC_FIRE_DUMMY = 1017
 IDC_CLEAR_WEAPONS = 1018
@@ -159,9 +158,14 @@ IDC_ANIMATION_LIST = 1030
 IDC_PLAY_ANIMATION = 1031
 IDC_WEAPON_LIST = 1032
 IDC_RESET_CAMERA = 1033
+IDC_SKIN_LIST = 1034
+IDC_SOUND_LIST = 1035
+IDC_PLAY_SOUND = 1036
 IDC_SEARCH_STATUS = 1201
 IDC_ANIMATION_LABEL = 1202
 IDC_WEAPON_LABEL = 1203
+IDC_SKIN_LABEL = 1204
+IDC_SOUND_LABEL = 1205
 
 FILTER_CONTROLS = (
     (IDC_FILTER_SHIPS, "ships"),
@@ -450,11 +454,15 @@ class LiveTrinityViewer(object):
         self.catalog_index = self.find_catalog_index(self.type_id)
         self.current_asset = self.resolve_current_asset()
         self.weapon_catalog = self.load_weapon_catalog()
+        self.audio_events = self.load_audio_events()
         self.armed_turret_sets = []
         self.armed_weapon = None
         self.selected_weapon_index = -1
+        self.skin_options = []
+        self.selected_skin_index = 0
         self.animation_options = []
         self.selected_animation_index = -1
+        self.selected_audio_index = 0
         self.dummy_target = None
         self.dummy_target_position = (0.0, 0.0, 0.0)
         self.firing_dummy = False
@@ -500,6 +508,11 @@ class LiveTrinityViewer(object):
         self.blue = None
         self.tri = None
         self.audio2 = None
+        self.audio_manager = None
+        self.ui_audio_player = None
+        self.audio_emitter = None
+        self.audio_ready = False
+        self.audio_last_error = ""
         self.geo2 = None
         self.trinity_package = None
         self.device = None
@@ -586,6 +599,10 @@ class LiveTrinityViewer(object):
             sof.get("race"),
             sof.get("materialSetID"),
         ]
+        for skin in list(entry.get("skins") or []):
+            fields.append(skin.get("label"))
+            fields.append(skin.get("internalName"))
+            fields.append(skin.get("skinID"))
         layout = sof.get("layout")
         if isinstance(layout, list):
             fields.extend(layout)
@@ -660,6 +677,24 @@ class LiveTrinityViewer(object):
             for weapon in weapons or []
             if weapon.get("resourcePath")
         ]
+
+    def load_audio_events(self):
+        events = self.catalog_payload.get("audioEvents", [])
+        if not isinstance(events, list):
+            return []
+        usable = []
+        seen = set()
+        for event in events:
+            event_name = native_text((event or {}).get("event") or "")
+            if not event_name or event_name.lower() in seen:
+                continue
+            seen.add(event_name.lower())
+            usable.append({
+                "event": event_name,
+                "label": native_text((event or {}).get("label") or event_name),
+                "source": native_text((event or {}).get("source") or ""),
+            })
+        return usable
 
     def parse_search_query(self, text):
         filters = {}
@@ -952,7 +987,7 @@ class LiveTrinityViewer(object):
             panel_x,
             panel_y,
             CONTROL_PANEL_WIDTH + 42,
-            720,
+            780,
             NULL,
             NULL,
             hinstance,
@@ -1029,7 +1064,7 @@ class LiveTrinityViewer(object):
             IDC_FILTER_GATES: "Gates",
             IDC_FILTER_STATIONS: "Stations",
             IDC_FILTER_STRUCTURES: "Structures",
-            IDC_FILTER_ANIMATIONS: "Has animations",
+            IDC_FILTER_ANIMATIONS: "Playable animations",
             IDC_FILTER_EXPLOSIONS: "Has explosions",
             IDC_FILTER_PUBLISHED: "Published",
         }
@@ -1044,6 +1079,17 @@ class LiveTrinityViewer(object):
                 100,
                 22,
             )
+        self.create_child("STATIC", "SKIN", 0, IDC_SKIN_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "COMBOBOX",
+            "",
+            CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
+            IDC_SKIN_LIST,
+            0,
+            0,
+            100,
+            280,
+        )
         self.create_child("STATIC", "Animation", 0, IDC_ANIMATION_LABEL, 0, 0, 100, 18)
         self.create_child(
             "COMBOBOX",
@@ -1076,9 +1122,30 @@ class LiveTrinityViewer(object):
             100,
             280,
         )
+        self.create_child("STATIC", "Sound preview", 0, IDC_SOUND_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "COMBOBOX",
+            "",
+            CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
+            IDC_SOUND_LIST,
+            0,
+            0,
+            100,
+            300,
+        )
+        self.create_child(
+            "BUTTON",
+            "Play Sound",
+            BS_PUSHBUTTON | WS_TABSTOP,
+            IDC_PLAY_SOUND,
+            0,
+            0,
+            88,
+            24,
+        )
         list_style = WS_BORDER | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | WS_TABSTOP
         self.create_child("LISTBOX", "", list_style, IDC_ASSET_LIST, 0, 0, 100, 100)
-        self.create_child("BUTTON", "Load", BS_PUSHBUTTON | WS_TABSTOP, IDC_LOAD, 0, 0, 64, 24)
+        self.create_child("BUTTON", "Load Asset", BS_PUSHBUTTON | WS_TABSTOP, IDC_LOAD, 0, 0, 64, 24)
         self.create_child("BUTTON", "Prev", BS_PUSHBUTTON | WS_TABSTOP, IDC_PREV, 0, 0, 64, 24)
         self.create_child("BUTTON", "Next", BS_PUSHBUTTON | WS_TABSTOP, IDC_NEXT, 0, 0, 64, 24)
         self.create_child("BUTTON", "Mode", BS_PUSHBUTTON | WS_TABSTOP, IDC_MODE, 0, 0, 64, 24)
@@ -1089,11 +1156,12 @@ class LiveTrinityViewer(object):
         self.create_child("BUTTON", "Post", BS_PUSHBUTTON | WS_TABSTOP, IDC_POST, 0, 0, 64, 24)
         self.create_child("BUTTON", "After FX", BS_PUSHBUTTON | WS_TABSTOP, IDC_AFTER, 0, 0, 64, 24)
         self.create_child("BUTTON", "Explode", BS_PUSHBUTTON | WS_TABSTOP, IDC_EXPLODE, 0, 0, 64, 24)
-        self.create_child("BUTTON", "Activate", BS_PUSHBUTTON | WS_TABSTOP, IDC_ACTIVATE, 0, 0, 64, 24)
         self.create_child("BUTTON", "Arm Max", BS_PUSHBUTTON | WS_TABSTOP, IDC_ARM_MAX, 0, 0, 64, 24)
         self.create_child("BUTTON", "Fire Dummy", BS_PUSHBUTTON | WS_TABSTOP, IDC_FIRE_DUMMY, 0, 0, 64, 24)
-        self.create_child("BUTTON", "Clear Guns", BS_PUSHBUTTON | WS_TABSTOP, IDC_CLEAR_WEAPONS, 0, 0, 64, 24)
+        self.create_child("BUTTON", "Clear Weapons", BS_PUSHBUTTON | WS_TABSTOP, IDC_CLEAR_WEAPONS, 0, 0, 64, 24)
         self.create_child("BUTTON", "Reset Camera", BS_PUSHBUTTON | WS_TABSTOP, IDC_RESET_CAMERA, 0, 0, 64, 24)
+        self.populate_skin_list()
+        self.populate_audio_list()
         self.populate_weapon_list()
         self.populate_catalog_list()
         self.position_controls()
@@ -1229,12 +1297,21 @@ class LiveTrinityViewer(object):
                 22,
                 True,
             )
-        action_button_width = 76
-        USER32.MoveWindow(self.controls[IDC_ANIMATION_LABEL], x, y + 110, 90, 18, True)
+        action_button_width = 86
+        USER32.MoveWindow(self.controls[IDC_SKIN_LABEL], x, y + 110, 90, 18, True)
+        USER32.MoveWindow(
+            self.controls[IDC_SKIN_LIST],
+            x,
+            y + 130,
+            content_width,
+            280,
+            True,
+        )
+        USER32.MoveWindow(self.controls[IDC_ANIMATION_LABEL], x, y + 162, 90, 18, True)
         USER32.MoveWindow(
             self.controls[IDC_ANIMATION_LIST],
             x,
-            y + 130,
+            y + 182,
             max(120, content_width - action_button_width - gap),
             240,
             True,
@@ -1242,27 +1319,44 @@ class LiveTrinityViewer(object):
         USER32.MoveWindow(
             self.controls[IDC_PLAY_ANIMATION],
             x + content_width - action_button_width,
-            y + 130,
+            y + 182,
             action_button_width,
             26,
             True,
         )
-        USER32.MoveWindow(self.controls[IDC_WEAPON_LABEL], x, y + 162, 90, 18, True)
+        USER32.MoveWindow(self.controls[IDC_WEAPON_LABEL], x, y + 214, 90, 18, True)
         USER32.MoveWindow(
             self.controls[IDC_WEAPON_LIST],
             x,
-            y + 182,
+            y + 234,
             content_width,
             280,
             True,
         )
-        button_y = y + max(146, panel_height - 242)
+        USER32.MoveWindow(self.controls[IDC_SOUND_LABEL], x, y + 266, 120, 18, True)
+        USER32.MoveWindow(
+            self.controls[IDC_SOUND_LIST],
+            x,
+            y + 286,
+            max(120, content_width - action_button_width - gap),
+            300,
+            True,
+        )
+        USER32.MoveWindow(
+            self.controls[IDC_PLAY_SOUND],
+            x + content_width - action_button_width,
+            y + 286,
+            action_button_width,
+            26,
+            True,
+        )
+        button_y = y + max(340, panel_height - 198)
         USER32.MoveWindow(
             self.controls[IDC_ASSET_LIST],
             x,
-            y + 214,
+            y + 318,
             content_width,
-            max(80, button_y - (y + 222)),
+            max(90, button_y - (y + 326)),
             True,
         )
         button_w = max(72, int((content_width - (gap * 2)) / 3))
@@ -1272,8 +1366,7 @@ class LiveTrinityViewer(object):
             (IDC_MODE, IDC_NEBULA, IDC_RESET_CAMERA),
             (IDC_LIGHT_DOWN, IDC_LIGHT_UP, IDC_BOOSTERS),
             (IDC_POST, IDC_AFTER, IDC_EXPLODE),
-            (IDC_ACTIVATE, IDC_ARM_MAX, IDC_FIRE_DUMMY),
-            (IDC_CLEAR_WEAPONS,),
+            (IDC_ARM_MAX, IDC_FIRE_DUMMY, IDC_CLEAR_WEAPONS),
         ]
         for row_index, row in enumerate(rows):
             for col_index, control_id in enumerate(row):
@@ -1340,6 +1433,56 @@ class LiveTrinityViewer(object):
         if not hwnd:
             return -1
         return int(USER32.SendMessageA(hwnd, CB_GETCURSEL, 0, 0))
+
+    def set_control_visible(self, control_id, visible):
+        hwnd = self.controls.get(control_id)
+        if hwnd:
+            USER32.ShowWindow(hwnd, SW_SHOWNORMAL if visible else SW_HIDE)
+
+    def skin_display_label(self, skin):
+        if skin.get("skinID") == 0:
+            return "Original hull material"
+        visible = "TQ" if skin.get("visibleTranquility") else "Hidden"
+        return "%s  |  %s" % (skin.get("label") or skin.get("skinID"), visible)
+
+    def populate_skin_list(self):
+        skins = []
+        if self.current_asset:
+            skins = list(self.current_asset.get("skins") or [])
+        has_skins = len(skins) > 0
+        self.set_control_visible(IDC_SKIN_LABEL, has_skins)
+        self.set_control_visible(IDC_SKIN_LIST, has_skins)
+        self.skin_options = []
+        if not has_skins:
+            self.selected_skin_index = 0
+            self.populate_combo(IDC_SKIN_LIST, ["No SKINs for this model"], 0)
+            return
+        self.skin_options = [{
+            "skinID": 0,
+            "label": "Original hull material",
+            "dna": native_text((self.current_asset or {}).get("dna") or self.dna),
+            "visibleTranquility": True,
+        }] + skins
+        selected = max(0, min(len(self.skin_options) - 1, int(self.selected_skin_index or 0)))
+        self.populate_combo(
+            IDC_SKIN_LIST,
+            [self.skin_display_label(skin) for skin in self.skin_options],
+            selected,
+        )
+        self.selected_skin_index = selected
+
+    def populate_audio_list(self):
+        labels = [
+            "%s  |  %s" % (
+                event.get("label") or event.get("event"),
+                event.get("event"),
+            )
+            for event in self.audio_events
+        ]
+        if not labels:
+            labels = ["No sound events found"]
+        self.populate_combo(IDC_SOUND_LIST, labels, 0)
+        self.selected_audio_index = 0 if self.audio_events else -1
 
     def weapon_display_label(self, weapon):
         kind = native_text(
@@ -1438,6 +1581,25 @@ class LiveTrinityViewer(object):
                 "controller": controller,
             })
 
+        def is_playable_curve_set(curve_set):
+            if curve_set is None:
+                return False
+            if not self.has_callable_hook(curve_set, ("Play", "PlayFrom", "Restart", "Start")):
+                return False
+            try:
+                curves = list(getattr(curve_set, "curves", []) or [])
+            except Exception:
+                curves = []
+            if curves:
+                return True
+            for attr_name in ("duration", "length"):
+                try:
+                    if float(getattr(curve_set, attr_name, 0.0) or 0.0) > 0.0:
+                        return True
+                except Exception:
+                    pass
+            return False
+
         queue = [self.space_object]
         visited = set()
         while queue and len(visited) < 1800:
@@ -1472,25 +1634,11 @@ class LiveTrinityViewer(object):
                             self.space_object,
                             name=name,
                         )
-                for variable in list(getattr(controller, "variables", []) or []):
-                    enum_values = native_text(getattr(variable, "enumValues", "") or "")
-                    variable_name = native_text(getattr(variable, "name", "") or "State")
-                    if not enum_values:
-                        continue
-                    for index, enum_label in enumerate(enum_values.split(",")):
-                        label = enum_label.strip() or str(index)
-                        add_option(
-                            ("state", variable_name.lower(), index),
-                            "State  |  %s = %s" % (variable_name, label),
-                            "state",
-                            variable,
-                            value=index,
-                        )
             if hasattr(obj, "Find"):
                 try:
                     for curve_set in obj.Find("trinity.TriCurveSet", 2):
                         name = native_text(getattr(curve_set, "name", "") or "")
-                        if name:
+                        if name and is_playable_curve_set(curve_set):
                             add_option(
                                 ("curve", name.lower()),
                                 "Curve  |  %s" % name,
@@ -1508,7 +1656,7 @@ class LiveTrinityViewer(object):
         self.animation_options = self.discover_animation_options()
         labels = [entry["label"] for entry in self.animation_options]
         if not labels:
-            labels = ["No authored animations"]
+            labels = ["No playable animations found"]
         self.populate_combo(IDC_ANIMATION_LIST, labels, 0)
         self.selected_animation_index = 0 if self.animation_options else -1
         self.refresh_action_buttons()
@@ -1536,7 +1684,11 @@ class LiveTrinityViewer(object):
             except Exception:
                 played = False
         elif kind == "curve":
-            played = self.safe_call(target, "PlayFrom", 0.0)
+            played = self.safe_call(target, "Restart")
+            if not played:
+                played = self.safe_call(target, "Start")
+            if not played:
+                played = self.safe_call(target, "PlayFrom", 0.0)
             if not played:
                 played = self.safe_call(target, "Play")
         if played:
@@ -1603,10 +1755,6 @@ class LiveTrinityViewer(object):
             len(self.current_explosion_options()) > 0,
         )
         self.set_control_enabled(
-            IDC_ACTIVATE,
-            bool(self.activation_possible),
-        )
-        self.set_control_enabled(
             IDC_ARM_MAX,
             self.can_arm_weapons(),
         )
@@ -1621,6 +1769,18 @@ class LiveTrinityViewer(object):
         self.set_control_enabled(
             IDC_PLAY_ANIMATION,
             bool(self.animation_options),
+        )
+        self.set_control_enabled(
+            IDC_SKIN_LIST,
+            len(self.skin_options) > 1,
+        )
+        self.set_control_enabled(
+            IDC_SOUND_LIST,
+            bool(self.audio_events),
+        )
+        self.set_control_enabled(
+            IDC_PLAY_SOUND,
+            bool(self.audio_events),
         )
 
     def sync_control_text(self):
@@ -1696,6 +1856,144 @@ class LiveTrinityViewer(object):
             "EveSpaceSceneShadowMap",
             tri.TriTextureRes(),
         )
+
+    def initialize_audio_runtime(self):
+        if self.audio_ready:
+            return True
+        if self.audio2 is None:
+            try:
+                self.audio2 = self.blue.LoadExtension("_audio2")
+            except Exception:
+                self.audio_last_error = traceback.format_exc()
+                return False
+        audio2 = self.audio2
+        try:
+            if hasattr(audio2, "GetOrCreateManager"):
+                self.audio_manager = audio2.GetOrCreateManager()
+            if self.audio_manager is not None and hasattr(audio2, "AudSettings"):
+                settings = audio2.AudSettings()
+                settings.applicationName = "Elysian Jessica"
+                settings.baseSoundbankPath = "res:/audio"
+                settings.soundbankLanguage = "English(US)"
+                try:
+                    settings.spatialAudioEnabled = False
+                except Exception:
+                    pass
+                try:
+                    self.audio_manager.UpdateSettings(settings)
+                except Exception:
+                    pass
+                banks = [
+                    "Init.bnk",
+                    "Music.bnk",
+                    "Music_essential.bnk",
+                    "Hangar.bnk",
+                    108,
+                    113,
+                    114,
+                    115,
+                    116,
+                    117,
+                    118,
+                    119,
+                    120,
+                    121,
+                ]
+                try:
+                    self.audio_manager.Enable(banks)
+                except Exception:
+                    for bank in banks:
+                        try:
+                            self.audio_manager.LoadBank(bank)
+                        except Exception:
+                            pass
+            if hasattr(audio2, "GetUIPlayer"):
+                try:
+                    self.ui_audio_player = audio2.GetUIPlayer()
+                except Exception:
+                    self.ui_audio_player = None
+            if hasattr(audio2, "AudEmitter"):
+                try:
+                    self.audio_emitter = audio2.AudEmitter("elysian_jessica_preview")
+                except Exception:
+                    self.audio_emitter = None
+            self.attach_audio_emitter_to_model()
+            self.audio_ready = True
+            self.audio_last_error = ""
+            return True
+        except Exception:
+            self.audio_last_error = traceback.format_exc()
+            print("[live] audio init failed:\n%s" % self.audio_last_error, file=sys.stderr)
+            return False
+
+    def attach_audio_emitter_to_model(self):
+        if self.space_object is None or self.audio_emitter is None or self.blue is None:
+            return False
+        try:
+            observers = getattr(self.space_object, "observers", None)
+            if observers is None:
+                return False
+            for observer in list(observers):
+                if getattr(observer, "observer", None) is self.audio_emitter:
+                    return True
+            tri_observer = self.blue.classes.CreateInstance("trinity.TriObserverLocal")
+            tri_observer.observer = self.audio_emitter
+            observers.append(tri_observer)
+            return True
+        except Exception:
+            return False
+
+    def send_audio_event(self, event_name):
+        event_name = native_text(event_name)
+        if not event_name:
+            return False
+        if not self.initialize_audio_runtime():
+            return False
+        self.attach_audio_emitter_to_model()
+        sent = False
+        for player in (self.ui_audio_player, self.audio_emitter):
+            if player is None:
+                continue
+            try:
+                player.SendEvent(unicode(event_name))
+                sent = True
+                break
+            except Exception:
+                try:
+                    player.SendEvent(event_name)
+                    sent = True
+                    break
+                except Exception:
+                    pass
+        if not sent and self.audio_manager is not None:
+            for method_name in ("PostEvent", "SendEvent"):
+                try:
+                    getattr(self.audio_manager, method_name)(event_name)
+                    sent = True
+                    break
+                except Exception:
+                    pass
+        if sent:
+            try:
+                if self.blue is not None:
+                    self.blue.os.Pump()
+            except Exception:
+                pass
+        return sent
+
+    def play_selected_sound(self):
+        selected = self.get_combo_selection(IDC_SOUND_LIST)
+        if not (0 <= selected < len(self.audio_events)):
+            return
+        self.selected_audio_index = selected
+        event = self.audio_events[selected]
+        sent = self.send_audio_event(event.get("event"))
+        print("[live] sound sent=%s event=%s label=%s" % (
+            sent,
+            event.get("event"),
+            event.get("label"),
+        ), file=sys.stderr)
+        self.update_title(force=True)
 
     def get_resource_queue_depth(self):
         pending = 0
@@ -1839,6 +2137,8 @@ class LiveTrinityViewer(object):
         if hasattr(space_object, "StartControllers"):
             space_object.StartControllers()
         self.space_object = space_object
+        if self.audio_ready:
+            self.attach_audio_emitter_to_model()
         self.apply_booster_state(rebuild=True)
         self.pump_resource_loads("space object")
         self.model_radius = float(space_object.GetBoundingSphereRadius())
@@ -1846,6 +2146,7 @@ class LiveTrinityViewer(object):
         if self.model_radius <= 0.0:
             self.model_radius = self.radius
         self.activation_possible = self.detect_activation_possible()
+        self.populate_skin_list()
         self.populate_animation_list()
         self.populate_weapon_list()
         self.refresh_action_buttons()
@@ -2637,12 +2938,35 @@ class LiveTrinityViewer(object):
         else:
             self.start_dummy_fire()
 
+    def apply_selected_skin(self):
+        selected = self.get_combo_selection(IDC_SKIN_LIST)
+        if not (0 <= selected < len(self.skin_options)):
+            return
+        if selected == self.selected_skin_index and self.dna == native_text(self.skin_options[selected].get("dna")):
+            return
+        self.selected_skin_index = selected
+        self.dna = native_text(self.skin_options[selected].get("dna") or (self.current_asset or {}).get("dna") or self.dna)
+        self.clear_preview_weapons()
+        self.clear_explosions()
+        self.space_object = None
+        self.original_boosters = None
+        self.build_space_object()
+        self.load_scene()
+        if self.render_driver:
+            self.render_driver.scene = self.scene
+            self.apply_render_flags()
+        self.update_camera()
+        self.sync_control_text()
+        self.update_title(force=True)
+
     def reload_current_asset(self):
         self.current_asset = self.resolve_current_asset()
         if self.current_asset:
             self.type_id = int(self.current_asset.get("typeID") or self.type_id)
             self.dna = native_text(self.current_asset.get("dna") or self.dna)
             self.radius = float(self.current_asset.get("radius") or self.radius)
+        self.selected_skin_index = 0
+        self.populate_skin_list()
         self.clear_preview_weapons()
         self.clear_explosions()
         self.scene_paths = self.build_scene_paths()
@@ -3336,9 +3660,6 @@ class LiveTrinityViewer(object):
         if normalized == "B":
             self.toggle_boosters()
             return 0
-        if normalized == "A":
-            self.activate_current_model()
-            return 0
         if normalized == "W":
             self.cycle_mode()
             return 0
@@ -3392,8 +3713,6 @@ class LiveTrinityViewer(object):
             self.toggle_after_effects()
         elif control_id == IDC_EXPLODE:
             self.play_explosion()
-        elif control_id == IDC_ACTIVATE:
-            self.activate_current_model()
         elif control_id == IDC_ARM_MAX:
             self.arm_max_turrets()
         elif control_id == IDC_FIRE_DUMMY:
@@ -3402,6 +3721,15 @@ class LiveTrinityViewer(object):
             self.clear_preview_weapons()
         elif control_id == IDC_PLAY_ANIMATION:
             self.play_selected_animation()
+        elif control_id == IDC_SKIN_LIST:
+            if notification == CBN_SELCHANGE:
+                self.apply_selected_skin()
+        elif control_id == IDC_SOUND_LIST:
+            if notification == CBN_SELCHANGE:
+                self.selected_audio_index = self.get_combo_selection(IDC_SOUND_LIST)
+                self.update_title(force=True)
+        elif control_id == IDC_PLAY_SOUND:
+            self.play_selected_sound()
         elif control_id == IDC_RESET_CAMERA:
             self.reset_camera()
         elif control_id == IDC_WEAPON_LIST:

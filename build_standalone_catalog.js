@@ -136,6 +136,37 @@ function normalizeGraphicRow(row) {
   };
 }
 
+function normalizeMaterialSetRow(row) {
+  const noneIfEmpty = (value) => {
+    if (value === undefined || value === null) {
+      return null;
+    }
+    const text = String(value).trim();
+    return text && text.toLowerCase() !== "none" ? text : null;
+  };
+  return {
+    materialSetID: Number(row && (row._key || row.materialSetID)) || 0,
+    description: row && row.description || null,
+    sofFactionName: noneIfEmpty(row && row.sofFactionName),
+    sofRaceHint: row && row.sofRaceHint || null,
+    material1: noneIfEmpty(row && row.material1) || "none",
+    material2: noneIfEmpty(row && row.material2) || "none",
+    material3: noneIfEmpty(row && row.material3) || "none",
+    material4: noneIfEmpty(row && row.material4) || "none",
+    resPathInsert: noneIfEmpty(row && row.resPathInsert),
+    sofPatternName: noneIfEmpty(row && row.sofPatternName),
+    customMaterial1: noneIfEmpty(row && (row.custommaterial1 || row.customMaterial1)) || "none",
+    customMaterial2: noneIfEmpty(row && (row.custommaterial2 || row.customMaterial2)) || "none",
+  };
+}
+
+function buildLocalizationMap(rows) {
+  return new Map((rows || []).map((row) => [
+    String(row && row._key),
+    row && row.text,
+  ]));
+}
+
 function buildDogmaByType(rows) {
   return new Map((rows || []).map((row) => [
     Number(row && row._key) || 0,
@@ -189,22 +220,47 @@ function classifyAsset(row) {
   return "object";
 }
 
-function buildSofDna(asset) {
+function buildSofDna(asset, materialSetOverride = null) {
   const { hull, faction, race, layout } = asset && asset.sof ? asset.sof : {};
   if (!hull || !faction || !race) {
     return null;
   }
-  let dna = `${hull}:${faction}:${race}`;
+  const materialSet = materialSetOverride || (asset && asset.sof && asset.sof.materialSet) || null;
+  const nextFaction =
+    materialSet && materialSet.sofFactionName
+      ? materialSet.sofFactionName
+      : faction;
+  let dna = `${hull}:${nextFaction}:${race}`;
+  const additions = [];
+  if (materialSet) {
+    additions.push(`material?${[
+      materialSet.material1 || "none",
+      materialSet.material2 || "none",
+      materialSet.material3 || "none",
+      materialSet.material4 || "none",
+    ].join(";")}`);
+    if (materialSet.resPathInsert !== undefined && materialSet.resPathInsert !== null) {
+      additions.push(`respathinsert?${materialSet.resPathInsert}`);
+    }
+    if (materialSet.sofPatternName) {
+      additions.push(`pattern?${materialSet.sofPatternName};${materialSet.customMaterial1 || "none"};${materialSet.customMaterial2 || "none"}`);
+    }
+  }
   const layouts = Array.isArray(layout)
     ? layout.filter(Boolean)
     : (layout ? [layout] : []);
   if (layouts.length > 0) {
-    dna += `:layout?${layouts.join(";")}`;
+    additions.push(`layout?${layouts.join(";")}`);
+  }
+  if (additions.length > 0) {
+    dna += `:${additions.join(":")}`;
   }
   return dna;
 }
 
-function makeAsset(row, graphic, sourceKind, animatedHullTokens) {
+function makeAsset(row, graphic, sourceKind, animatedHullTokens, materialSetsByID) {
+  const materialSetID = Number(graphic.sofMaterialSetID) || 0;
+  const materialSet = materialSetsByID.get(materialSetID) || null;
   const asset = {
     typeID: Number(row.typeID) || 0,
     name: row.name || row.typeName || `Type ${row.typeID}`,
@@ -221,7 +277,8 @@ function makeAsset(row, graphic, sourceKind, animatedHullTokens) {
       faction: graphic.sofFactionName,
       race: graphic.sofRaceName,
       layout: graphic.sofLayout,
-      materialSetID: graphic.sofMaterialSetID,
+      materialSetID,
+      materialSet,
     },
     explosionBucketID: graphic.explosionBucketID,
     graphicFile: graphic.graphicFile,
@@ -236,8 +293,73 @@ function makeAsset(row, graphic, sourceKind, animatedHullTokens) {
       asset.assetKind === "gate" ||
       (hullToken.length >= 3 && animatedHullTokens.has(hullToken)),
     explosions: false,
+    skins: false,
   };
   return asset;
+}
+
+function buildSkinsByType(skinRows, skinLicenseRows, skinMaterialRows, materialSetsByID, localizationByID) {
+  const licenseBySkinID = new Map();
+  for (const row of skinLicenseRows || []) {
+    const skinID = Number(row && row.skinID) || 0;
+    if (!skinID || licenseBySkinID.has(skinID)) {
+      continue;
+    }
+    licenseBySkinID.set(skinID, {
+      licenseTypeID: Number(row.licenseTypeID) || 0,
+      duration: Number(row.duration),
+    });
+  }
+
+  const skinMaterialByID = new Map((skinMaterialRows || []).map((row) => [
+    Number(row && (row._key || row.skinMaterialID)) || 0,
+    row,
+  ]));
+  const skinsByType = new Map();
+  for (const row of skinRows || []) {
+    const skinID = Number(row && (row.skinID || row._key)) || 0;
+    const skinMaterialID = Number(row && row.skinMaterialID) || 0;
+    const skinMaterial = skinMaterialByID.get(skinMaterialID);
+    const materialSetID = Number(skinMaterial && skinMaterial.materialSetID) || 0;
+    const materialSet = materialSetsByID.get(materialSetID);
+    if (!skinID || !materialSet || !materialSet.sofFactionName) {
+      continue;
+    }
+    const displayNameID = Number(skinMaterial && skinMaterial.displayNameID) || 0;
+    const materialName = localizationByID.get(String(displayNameID));
+    const label = materialName || row.internalName || materialSet.description || `SKIN ${skinID}`;
+    const skin = {
+      skinID,
+      internalName: row.internalName || label,
+      label,
+      skinMaterialID,
+      materialSetID,
+      licenseTypeID: (licenseBySkinID.get(skinID) || {}).licenseTypeID || null,
+      visibleTranquility: row.visibleTranquility === true,
+      allowCCPDevs: row.allowCCPDevs === true,
+      materialSet,
+      dna: null,
+    };
+    for (const typeID of row.types || []) {
+      const numericTypeID = Number(typeID) || 0;
+      if (!numericTypeID) {
+        continue;
+      }
+      if (!skinsByType.has(numericTypeID)) {
+        skinsByType.set(numericTypeID, []);
+      }
+      skinsByType.get(numericTypeID).push(skin);
+    }
+  }
+  for (const rows of skinsByType.values()) {
+    rows.sort((left, right) => {
+      if (left.visibleTranquility !== right.visibleTranquility) {
+        return left.visibleTranquility ? -1 : 1;
+      }
+      return String(left.label).localeCompare(String(right.label));
+    });
+  }
+  return skinsByType;
 }
 
 function classifyWeapon(row, graphic) {
@@ -525,6 +647,42 @@ function buildNebulaCatalog(resIndex) {
   };
 }
 
+function buildAudioEventCatalog(soundIDRows) {
+  const curated = [
+    { label: "Warp: spool up", event: "warp_ship_init", kind: "ui" },
+    { label: "Warp: abort", event: "warp_ship_abort", kind: "ui" },
+    { label: "Warp: drive active message", event: "msg_WarpDriveActive_play", kind: "ui" },
+    { label: "Clone: pod transition", event: "transition_pod_play", kind: "ui" },
+  ];
+  const terms = [
+    "jumpgate",
+    "warpgate",
+    "dungeon_gate",
+    "drifter_gate",
+    "mobile_large_warp",
+    "ship_booster",
+    "ess_ui",
+  ];
+  const seen = new Set(curated.map((row) => row.event));
+  const events = [...curated];
+  for (const row of soundIDRows || []) {
+    const event = String(row && row.wwiseEvent || "");
+    const lower = event.toLowerCase();
+    if (!event || seen.has(event) || !terms.some((term) => lower.includes(term))) {
+      continue;
+    }
+    seen.add(event);
+    events.push({
+      label: event.replace(/_/g, " "),
+      event,
+      soundID: Number(row._key) || 0,
+      kind: "emitter",
+    });
+  }
+  events.sort((left, right) => left.label.localeCompare(right.label));
+  return events;
+}
+
 function resolveExplosionOptions(asset, explosionBucketsByID, explosionIDsByKey, resIndex) {
   const bucketID = Number(asset && asset.explosionBucketID) || 0;
   const bucket = explosionBucketsByID.get(bucketID);
@@ -573,16 +731,32 @@ function buildCatalog(options = {}) {
   const clientRoot = options.clientRoot || DEFAULT_CLIENT_ROOT;
   const latestExport = findLatestClientSdeExport();
   const graphicIDsPath = findFirst(latestExport, "graphicids.jsonl");
+  const graphicMaterialSetsPath = findFirst(latestExport, "graphicmaterialsets.jsonl");
   const explosionIDsPath = findFirst(latestExport, "explosionids.jsonl");
   const explosionBucketIDsPath = findFirst(latestExport, "explosionbucketids.jsonl");
+  const skinsPath = findFirst(latestExport, "skins.jsonl");
+  const skinLicensesPath = findFirst(latestExport, "skinlicenses.jsonl");
+  const skinMaterialsPath = findFirst(latestExport, "skinmaterials.jsonl");
+  const localizationPath = findFirst(latestExport, "localization_fsd_en-us.jsonl");
+  const soundIDsPath = findFirst(latestExport, "soundids.jsonl");
   const itemTypesPath = path.join(REPO_ROOT, "server", "src", "newDatabase", "data", "itemTypes", "data.json");
   const shipTypesPath = path.join(REPO_ROOT, "server", "src", "newDatabase", "data", "shipTypes", "data.json");
   const itemTypes = readJson(itemTypesPath, {});
   const shipTypes = readJson(shipTypesPath, {});
   const graphics = readJsonl(graphicIDsPath).map(normalizeGraphicRow);
   const graphicsByID = new Map(graphics.map((row) => [row.graphicID, row]));
+  const materialSets = readJsonl(graphicMaterialSetsPath).map(normalizeMaterialSetRow);
+  const materialSetsByID = new Map(materialSets.map((row) => [row.materialSetID, row]));
   const explosionIDsByKey = new Map(readJsonl(explosionIDsPath).map((row) => [String(row._key), row]));
   const explosionBucketsByID = new Map(readJsonl(explosionBucketIDsPath).map((row) => [Number(row._key), row]));
+  const localizationByID = buildLocalizationMap(readJsonl(localizationPath));
+  const skinsByType = buildSkinsByType(
+    readJsonl(skinsPath),
+    readJsonl(skinLicensesPath),
+    readJsonl(skinMaterialsPath),
+    materialSetsByID,
+    localizationByID,
+  );
   const typeDogmaPath = findFirst(latestExport, "typedogma.jsonl");
   const groupGraphicsPath = findFirst(latestExport, "groupgraphics.jsonl");
   const dogmaByType = buildDogmaByType(readJsonl(typeDogmaPath));
@@ -613,9 +787,25 @@ function buildCatalog(options = {}) {
     if (!graphic) {
       continue;
     }
-    const asset = makeAsset(row, graphic, source, animatedHullTokens);
+    const asset = makeAsset(row, graphic, source, animatedHullTokens, materialSetsByID);
     if (!asset.dna) {
       continue;
+    }
+    const skins = (skinsByType.get(typeID) || []).map((skin) => ({
+      skinID: skin.skinID,
+      internalName: skin.internalName,
+      label: skin.label,
+      skinMaterialID: skin.skinMaterialID,
+      materialSetID: skin.materialSetID,
+      licenseTypeID: skin.licenseTypeID,
+      visibleTranquility: skin.visibleTranquility,
+      allowCCPDevs: skin.allowCCPDevs,
+      materialSet: skin.materialSet,
+      dna: buildSofDna(asset, skin.materialSet),
+    })).filter((skin) => skin.dna);
+    if (skins.length > 0) {
+      asset.skins = skins;
+      asset.capabilities.skins = true;
     }
     asset.explosions = resolveExplosionOptions(asset, explosionBucketsByID, explosionIDsByKey, resIndex);
     asset.capabilities.explosions = asset.explosions.length > 0;
@@ -627,14 +817,21 @@ function buildCatalog(options = {}) {
     return left.name.localeCompare(right.name);
   });
   const nebulas = buildNebulaCatalog(resIndex);
+  const audioEvents = buildAudioEventCatalog(readJsonl(soundIDsPath));
   return {
     generatedAt: new Date().toISOString(),
     format: "elysian-jessica-standalone-catalog-v3",
     selectedTypeID: 587,
     sources: {
       graphicIDsPath,
+      graphicMaterialSetsPath,
       explosionIDsPath,
       explosionBucketIDsPath,
+      skinsPath,
+      skinLicensesPath,
+      skinMaterialsPath,
+      localizationPath,
+      soundIDsPath,
       itemTypesPath,
       shipTypesPath,
       typeDogmaPath,
@@ -646,12 +843,16 @@ function buildCatalog(options = {}) {
       ships: assets.filter((entry) => entry.categoryID === 6).length,
       objects: assets.filter((entry) => entry.categoryID !== 6).length,
       explosionReady: assets.filter((entry) => entry.explosions.length > 0).length,
+      skinReady: assets.filter((entry) => entry.skins && entry.skins.length > 0).length,
+      skins: assets.reduce((total, entry) => total + ((entry.skins && entry.skins.length) || 0), 0),
       resIndexEntries: resIndex.count,
       nebulaCubeMaps: nebulas.cubeMaps.length,
       nebulaScenes: nebulas.scenes.length,
       weaponPreviewWeapons: weaponPreview.length,
+      audioEvents: audioEvents.length,
     },
     nebulas,
+    audioEvents,
     weaponPreview: {
       weapons: weaponPreview,
     },
@@ -667,3 +868,5 @@ console.log(`Wrote ${options.outputPath}`);
 console.log(`Assets: ${catalog.stats.assets}, ships: ${catalog.stats.ships}, explosion-ready: ${catalog.stats.explosionReady}`);
 console.log(`Nebulas: ${catalog.stats.nebulaCubeMaps} cube maps, ${catalog.stats.nebulaScenes} scene presets`);
 console.log(`Weapon previews: ${catalog.stats.weaponPreviewWeapons}`);
+console.log(`SKIN-ready: ${catalog.stats.skinReady} assets, ${catalog.stats.skins} SKIN choices`);
+console.log(`Audio events: ${catalog.stats.audioEvents}`);

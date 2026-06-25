@@ -14,6 +14,9 @@ $ToolRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RuntimeRoot = Join-Path $ToolRoot "runtime"
 $SettingsPath = Join-Path $RuntimeRoot "settings.json"
 $CatalogPath = Join-Path $RuntimeRoot "catalog.json"
+$BundledCatalogPath = Join-Path $ToolRoot "catalog\catalog.json"
+$BundledCatalogGzipPath = Join-Path $ToolRoot "catalog\catalog.json.gz"
+$CatalogDownloadUrl = "https://raw.githubusercontent.com/JohnElysian/Eve-Online-Trinity-Viewer/main/catalog/catalog.json.gz"
 $ViewerPath = Join-Path $ToolRoot "trinity_live_viewer.py"
 $PythonHome = Join-Path $ToolRoot "python27"
 $BuilderPath = Join-Path $ToolRoot "build_standalone_catalog.js"
@@ -47,6 +50,87 @@ function Read-Settings {
 function Save-Settings($settings) {
   New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
   $settings | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $SettingsPath -Encoding UTF8
+}
+
+function Test-CatalogUsable($path) {
+  if (-not (Test-Path -LiteralPath $path)) {
+    return $false
+  }
+  try {
+    $catalog = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    $assets = @($catalog.assets)
+    if ($assets.Count -le 0) {
+      return $false
+    }
+    foreach ($asset in ($assets | Select-Object -First 64)) {
+      if ($asset.dna) {
+        return $true
+      }
+    }
+    return $false
+  } catch {
+    return $false
+  }
+}
+
+function Expand-GzipFile($sourcePath, $destinationPath) {
+  New-Item -ItemType Directory -Force -Path ([System.IO.Path]::GetDirectoryName($destinationPath)) | Out-Null
+  $input = [System.IO.File]::OpenRead($sourcePath)
+  try {
+    $gzip = New-Object System.IO.Compression.GzipStream($input, [System.IO.Compression.CompressionMode]::Decompress)
+    try {
+      $output = [System.IO.File]::Create($destinationPath)
+      try {
+        $gzip.CopyTo($output)
+      } finally {
+        $output.Dispose()
+      }
+    } finally {
+      $gzip.Dispose()
+    }
+  } finally {
+    $input.Dispose()
+  }
+}
+
+function Restore-BundledCatalog {
+  if (Test-Path -LiteralPath $BundledCatalogPath) {
+    Write-Stage "Restoring bundled catalogue..."
+    New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
+    Copy-Item -LiteralPath $BundledCatalogPath -Destination $CatalogPath -Force
+    return (Test-CatalogUsable $CatalogPath)
+  }
+  if (Test-Path -LiteralPath $BundledCatalogGzipPath) {
+    Write-Stage "Restoring bundled catalogue..."
+    Expand-GzipFile $BundledCatalogGzipPath $CatalogPath
+    return (Test-CatalogUsable $CatalogPath)
+  }
+  return $false
+}
+
+function Download-Catalog {
+  $downloadPath = Join-Path $RuntimeRoot "catalog.download.json.gz"
+  try {
+    Write-Stage "Downloading viewer metadata catalogue..."
+    New-Item -ItemType Directory -Force -Path $RuntimeRoot | Out-Null
+    Invoke-WebRequest -Uri $CatalogDownloadUrl -OutFile $downloadPath -UseBasicParsing
+    Expand-GzipFile $downloadPath $CatalogPath
+    return (Test-CatalogUsable $CatalogPath)
+  } catch {
+    Write-Stage "Catalogue download was not available: $($_.Exception.Message)"
+    return $false
+  } finally {
+    Remove-Item -LiteralPath $downloadPath -Force -ErrorAction SilentlyContinue
+  }
+}
+
+function Test-InternalCatalogBuildData {
+  $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $ToolRoot "..\.."))
+  return (
+    (Test-Path -LiteralPath (Join-Path $repoRoot "tools\ClientSDE\exports")) -and
+    (Test-Path -LiteralPath (Join-Path $repoRoot "server\src\newDatabase\data\itemTypes\data.json")) -and
+    (Test-Path -LiteralPath (Join-Path $repoRoot "server\src\newDatabase\data\shipTypes\data.json"))
+  )
 }
 
 function Test-EveClientRoot($path) {
@@ -186,15 +270,33 @@ function Ensure-Python27 {
 }
 
 function Ensure-Catalog($client) {
-  if (Test-Path -LiteralPath $CatalogPath) {
+  if (Test-CatalogUsable $CatalogPath) {
     return
   }
+
+  if (Test-Path -LiteralPath $CatalogPath) {
+    Write-Stage "Existing catalogue is missing SOF assets; replacing it..."
+    $badPath = Join-Path $RuntimeRoot ("catalog.invalid-{0}.json" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+    Move-Item -LiteralPath $CatalogPath -Destination $badPath -Force
+  }
+
+  if (Restore-BundledCatalog) {
+    return
+  }
+
+  if (Download-Catalog) {
+    return
+  }
+
   if (-not (Test-Path -LiteralPath $BuilderPath)) {
-    throw "Missing local runtime catalogue and no builder is available."
+    throw "Missing viewer metadata catalogue. Download the release zip or use a source archive that includes catalog\catalog.json.gz."
+  }
+  if (-not (Test-InternalCatalogBuildData)) {
+    throw "Missing viewer metadata catalogue. Normal users do not need Elysian Eve's ClientSDE; download the release zip or keep catalog\catalog.json.gz next to this launcher."
   }
   $node = Get-Command node.exe -ErrorAction SilentlyContinue
   if (-not $node) {
-    throw "Missing local runtime catalogue. Install Node.js or run on an Elysian checkout that has already generated runtime\catalog.json."
+    throw "Missing viewer metadata catalogue and Node.js is not installed for an internal rebuild."
   }
   $logDir = Join-Path $RuntimeRoot "logs"
   New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -216,6 +318,9 @@ function Ensure-Catalog($client) {
   }
   if (-not (Test-Path -LiteralPath $CatalogPath)) {
     throw "Catalogue build completed, but runtime catalogue was not written: $CatalogPath"
+  }
+  if (-not (Test-CatalogUsable $CatalogPath)) {
+    throw "Catalogue build completed, but catalog.json contains no SOF assets."
   }
 }
 
