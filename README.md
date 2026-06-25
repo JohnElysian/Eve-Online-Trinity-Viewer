@@ -4,8 +4,8 @@
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=00c2ff">
   </a>
-  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3/ElysianJessica-v0.3.zip">
-    <img alt="Download v0.3" src="https://img.shields.io/badge/download-v0.3-7c3aed?style=for-the-badge&logo=github&logoColor=white">
+  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3.1/ElysianJessica-v0.3.1.zip">
+    <img alt="Download v0.3.1" src="https://img.shields.io/badge/download-v0.3.1-7c3aed?style=for-the-badge&logo=github&logoColor=white">
   </a>
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=22c55e">
@@ -40,7 +40,8 @@ it reads them from your local EVE installation.
   and other space objects.
 - Real EVE nebulas and lighting controls.
 - SKIN material previews for supported ships.
-- Authored playable model animations where a model exposes them.
+- Exposed model animation, curve, controller, and event entries where a model
+  publishes them through Trinity.
 - Native audio event previews for warp, gate, booster, and other shipped sound
   events.
 - Real turret and launcher hardpoint mounting.

@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.3.1 - Model Animation Enumeration Fix
+
+Jessica v0.3.1 restores the animation picker to a discovery-first model view.
+
+### Changed
+
+- The animation dropdown now lists exposed Trinity animation updater names,
+  curve sets, controllers, and controller event handlers discovered on the
+  loaded model instead of hiding them behind an overly strict playable filter.
+- Duplicate-friendly discovery keeps separately exposed model internals visible
+  even when they share a friendly name.
+- Stargates and other structured models can expose their authored controller
+  and curve entries again for direct inspection.
+- Controller event playback now tries the owning controller as well as the
+  model node.
+- The Activate control is visible again as a separate model utility; the
+  animation dropdown itself stays focused on discovered model entries.
+
+### Notes
+
+- Requires a local EVE Online installation.
+- This release does not include EVE client assets.
+
 ## v0.3 - SKINs, Audio, and Self-Healing Catalogue
 
 Jessica v0.3 makes the public download much easier to run and expands the

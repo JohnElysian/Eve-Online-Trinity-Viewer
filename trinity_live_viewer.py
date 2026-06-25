@@ -144,6 +144,7 @@ IDC_BOOSTERS = 1009
 IDC_POST = 1010
 IDC_AFTER = 1011
 IDC_EXPLODE = 1012
+IDC_ACTIVATE = 1013
 IDC_ARM_MAX = 1016
 IDC_FIRE_DUMMY = 1017
 IDC_CLEAR_WEAPONS = 1018
@@ -1156,6 +1157,7 @@ class LiveTrinityViewer(object):
         self.create_child("BUTTON", "Post", BS_PUSHBUTTON | WS_TABSTOP, IDC_POST, 0, 0, 64, 24)
         self.create_child("BUTTON", "After FX", BS_PUSHBUTTON | WS_TABSTOP, IDC_AFTER, 0, 0, 64, 24)
         self.create_child("BUTTON", "Explode", BS_PUSHBUTTON | WS_TABSTOP, IDC_EXPLODE, 0, 0, 64, 24)
+        self.create_child("BUTTON", "Activate", BS_PUSHBUTTON | WS_TABSTOP, IDC_ACTIVATE, 0, 0, 64, 24)
         self.create_child("BUTTON", "Arm Max", BS_PUSHBUTTON | WS_TABSTOP, IDC_ARM_MAX, 0, 0, 64, 24)
         self.create_child("BUTTON", "Fire Dummy", BS_PUSHBUTTON | WS_TABSTOP, IDC_FIRE_DUMMY, 0, 0, 64, 24)
         self.create_child("BUTTON", "Clear Weapons", BS_PUSHBUTTON | WS_TABSTOP, IDC_CLEAR_WEAPONS, 0, 0, 64, 24)
@@ -1350,7 +1352,17 @@ class LiveTrinityViewer(object):
             26,
             True,
         )
-        button_y = y + max(340, panel_height - 198)
+        rows = [
+            (IDC_LOAD, IDC_PREV, IDC_NEXT),
+            (IDC_MODE, IDC_NEBULA, IDC_RESET_CAMERA),
+            (IDC_LIGHT_DOWN, IDC_LIGHT_UP, IDC_BOOSTERS),
+            (IDC_POST, IDC_AFTER, IDC_EXPLODE),
+            (IDC_ACTIVATE, IDC_ARM_MAX, IDC_FIRE_DUMMY),
+            (IDC_CLEAR_WEAPONS,),
+        ]
+        button_h = 26
+        button_block_h = (len(rows) * button_h) + ((len(rows) - 1) * gap)
+        button_y = y + max(340, panel_height - button_block_h)
         USER32.MoveWindow(
             self.controls[IDC_ASSET_LIST],
             x,
@@ -1360,14 +1372,6 @@ class LiveTrinityViewer(object):
             True,
         )
         button_w = max(72, int((content_width - (gap * 2)) / 3))
-        button_h = 26
-        rows = [
-            (IDC_LOAD, IDC_PREV, IDC_NEXT),
-            (IDC_MODE, IDC_NEBULA, IDC_RESET_CAMERA),
-            (IDC_LIGHT_DOWN, IDC_LIGHT_UP, IDC_BOOSTERS),
-            (IDC_POST, IDC_AFTER, IDC_EXPLODE),
-            (IDC_ARM_MAX, IDC_FIRE_DUMMY, IDC_CLEAR_WEAPONS),
-        ]
         for row_index, row in enumerate(rows):
             for col_index, control_id in enumerate(row):
                 USER32.MoveWindow(
@@ -1569,7 +1573,7 @@ class LiveTrinityViewer(object):
         seen = set()
 
         def add_option(key, label, kind, target, name=None, value=None, controller=None):
-            if key in seen or len(options) >= 320:
+            if key in seen or len(options) >= 1200:
                 return
             seen.add(key)
             options.append({
@@ -1581,20 +1585,29 @@ class LiveTrinityViewer(object):
                 "controller": controller,
             })
 
-        def is_playable_curve_set(curve_set):
-            if curve_set is None:
-                return False
-            if not self.has_callable_hook(curve_set, ("Play", "PlayFrom", "Restart", "Start")):
-                return False
+        def object_marker(obj):
             try:
-                curves = list(getattr(curve_set, "curves", []) or [])
+                return id(obj)
             except Exception:
-                curves = []
-            if curves:
+                return 0
+
+        def object_name(obj, fallback=""):
+            try:
+                return native_text(getattr(obj, "name", "") or fallback)
+            except Exception:
+                return native_text(fallback)
+
+        def exposed_curve_or_controller(obj):
+            if obj is None:
+                return False
+            if self.has_callable_hook(obj, ("Play", "PlayFrom", "Restart", "Start")):
                 return True
+            for attr_name in ("curves", "bindings", "events", "states"):
+                if self.has_nonempty_collection(obj, attr_name):
+                    return True
             for attr_name in ("duration", "length"):
                 try:
-                    if float(getattr(curve_set, attr_name, 0.0) or 0.0) > 0.0:
+                    if float(getattr(obj, attr_name, 0.0) or 0.0) > 0.0:
                         return True
                 except Exception:
                     pass
@@ -1614,7 +1627,7 @@ class LiveTrinityViewer(object):
                     for animation_name in updater.GetAnimationNames():
                         name = native_text(animation_name)
                         add_option(
-                            ("animation", name.lower()),
+                            ("animation", object_marker(obj), name.lower()),
                             "Animation  |  %s" % name,
                             "animation",
                             obj,
@@ -1624,23 +1637,48 @@ class LiveTrinityViewer(object):
                 except Exception:
                     pass
             for controller in list(getattr(obj, "controllers", []) or []):
+                controller_name = object_name(
+                    controller,
+                    "%s #%x" % (type(controller).__name__, object_marker(controller) & 0xffff),
+                )
+                if controller_name and exposed_curve_or_controller(controller):
+                    add_option(
+                        ("controller", object_marker(controller), controller_name.lower()),
+                        "Controller  |  %s" % controller_name,
+                        "curve",
+                        controller,
+                        name=controller_name,
+                    )
                 for event_handler in list(getattr(controller, "eventHandlers", []) or []):
                     name = native_text(getattr(event_handler, "name", "") or "")
                     if name:
+                        label = "Event  |  %s" % name
+                        if controller_name:
+                            label = "Event  |  %s / %s" % (controller_name, name)
                         add_option(
-                            ("event", name.lower()),
-                            "Event  |  %s" % name,
+                            ("event", object_marker(controller), name.lower()),
+                            label,
                             "event",
-                            self.space_object,
+                            obj,
                             name=name,
+                            controller=controller,
                         )
             if hasattr(obj, "Find"):
                 try:
-                    for curve_set in obj.Find("trinity.TriCurveSet", 2):
-                        name = native_text(getattr(curve_set, "name", "") or "")
-                        if name and is_playable_curve_set(curve_set):
+                    curve_sets = []
+                    for class_name in ("trinity.TriCurveSet", "trinity.Tr2CurveSet"):
+                        try:
+                            curve_sets.extend(list(obj.Find(class_name, 2)))
+                        except Exception:
+                            pass
+                    for curve_set in curve_sets:
+                        name = object_name(
+                            curve_set,
+                            "%s #%x" % (type(curve_set).__name__, object_marker(curve_set) & 0xffff),
+                        )
+                        if name and exposed_curve_or_controller(curve_set):
                             add_option(
-                                ("curve", name.lower()),
+                                ("curve", object_marker(curve_set), name.lower()),
                                 "Curve  |  %s" % name,
                                 "curve",
                                 curve_set,
@@ -1648,6 +1686,17 @@ class LiveTrinityViewer(object):
                             )
                 except Exception:
                     pass
+            name = object_name(obj)
+            class_name = type(obj).__name__
+            if name and exposed_curve_or_controller(obj):
+                if re.search(r"(controller|animation|curve|effect)", class_name, re.I):
+                    add_option(
+                        ("node", object_marker(obj), name.lower()),
+                        "%s  |  %s" % (class_name, name),
+                        "curve",
+                        obj,
+                        name=name,
+                    )
             for child in self.iter_known_children(obj):
                 queue.append(child)
         return options
@@ -1677,6 +1726,10 @@ class LiveTrinityViewer(object):
                 played = self.safe_call(option.get("controller"), "PlayAnimation", name)
         elif kind == "event":
             played = self.safe_call(target, "HandleControllerEvent", name)
+            if not played:
+                played = self.safe_call(option.get("controller"), "HandleControllerEvent", name)
+        elif kind == "gate-event":
+            played = self.activate_gate_event(name) > 0
         elif kind == "state":
             try:
                 target.value = option.get("value")
@@ -1691,6 +1744,12 @@ class LiveTrinityViewer(object):
                 played = self.safe_call(target, "PlayFrom", 0.0)
             if not played:
                 played = self.safe_call(target, "Play")
+        elif kind == "activate":
+            if native_text((self.current_asset or {}).get("assetKind")).lower() == "gate":
+                played = self.activate_gate_model() > 0
+            else:
+                self.activate_current_model()
+                played = True
         if played:
             self.pump_resource_loads("animation %s" % option.get("label"), 0.4)
         print("[live] animation played=%s option=%s" % (
@@ -1753,6 +1812,10 @@ class LiveTrinityViewer(object):
         self.set_control_enabled(
             IDC_EXPLODE,
             len(self.current_explosion_options()) > 0,
+        )
+        self.set_control_enabled(
+            IDC_ACTIVATE,
+            bool(self.activation_possible),
         )
         self.set_control_enabled(
             IDC_ARM_MAX,
@@ -3445,12 +3508,41 @@ class LiveTrinityViewer(object):
                 return True
         return False
 
+    def iter_gate_activation_targets(self, limit=900):
+        if self.space_object is None:
+            return
+        queue = [self.space_object]
+        seen = set()
+        scanned = 0
+        gate_hooks = (
+            "SetControllerVariable",
+            "HandleControllerEvent",
+            "StartControllers",
+        )
+        while queue and scanned < limit:
+            obj = queue.pop(0)
+            try:
+                marker = id(obj)
+            except Exception:
+                marker = None
+            if marker is not None and marker in seen:
+                continue
+            if marker is not None:
+                seen.add(marker)
+            scanned += 1
+            if self.has_callable_hook(obj, gate_hooks):
+                yield obj
+            for child in self.iter_known_children(obj):
+                queue.append(child)
+
     def detect_activation_possible(self):
         if self.space_object is None:
             return False
         asset_kind = native_text((self.current_asset or {}).get("assetKind")).lower()
         if asset_kind == "gate":
-            return self.has_callable_hook(self.space_object, ("SetControllerVariable", "HandleControllerEvent", "StartControllers"))
+            for _target in self.iter_gate_activation_targets():
+                return True
+            return False
         queue = [self.space_object]
         seen = set()
         scanned = 0
@@ -3496,10 +3588,20 @@ class LiveTrinityViewer(object):
                 queue.append(child)
         return False
 
+    def activate_gate_event(self, event_name):
+        if self.space_object is None:
+            return 0
+        hooks = 0
+        for target in self.iter_gate_activation_targets():
+            if self.safe_call(target, "HandleControllerEvent", event_name):
+                hooks += 1
+        return hooks
+
     def activate_gate_model(self):
         if self.space_object is None:
             return 0
         hooks = 0
+        targets = list(self.iter_gate_activation_targets())
         for name, value in (
             ("ActivationState", 2.0),
             ("InvasionState", 0.0),
@@ -3508,15 +3610,16 @@ class LiveTrinityViewer(object):
             ("suppression", 0.0),
             ("itemIdSeed", float((int(self.type_id) << 8) % 1000)),
         ):
-            if self.safe_call(self.space_object, "SetControllerVariable", name, value):
+            for target in targets:
+                if self.safe_call(target, "SetControllerVariable", name, value):
+                    hooks += 1
+        for target in targets:
+            if self.safe_call(target, "StartControllers"):
                 hooks += 1
-        if self.safe_call(self.space_object, "StartControllers"):
-            hooks += 1
         event_names = ("Arrival", "Departure")
         event_name = event_names[self.activation_step % len(event_names)]
         self.activation_step += 1
-        if self.safe_call(self.space_object, "HandleControllerEvent", event_name):
-            hooks += 1
+        hooks += self.activate_gate_event(event_name)
         return hooks
 
     def activate_object_node(self, obj):
@@ -3713,6 +3816,8 @@ class LiveTrinityViewer(object):
             self.toggle_after_effects()
         elif control_id == IDC_EXPLODE:
             self.play_explosion()
+        elif control_id == IDC_ACTIVATE:
+            self.activate_current_model()
         elif control_id == IDC_ARM_MAX:
             self.arm_max_turrets()
         elif control_id == IDC_FIRE_DUMMY:
