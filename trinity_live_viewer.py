@@ -2197,6 +2197,7 @@ class LiveTrinityViewer(object):
             self.original_boosters = space_object.boosters
         if hasattr(space_object, "FreezeHighDetailMesh"):
             space_object.FreezeHighDetailMesh()
+        self.apply_preview_default_controller_state(space_object)
         if hasattr(space_object, "StartControllers"):
             space_object.StartControllers()
         self.space_object = space_object
@@ -2242,6 +2243,7 @@ class LiveTrinityViewer(object):
                 setattr(model, curve_name, None)
         if hasattr(model, "FreezeHighDetailMesh"):
             model.FreezeHighDetailMesh()
+        self.apply_preview_default_controller_state(model)
         if hasattr(model, "StartControllers"):
             model.StartControllers()
         return model
@@ -2293,6 +2295,105 @@ class LiveTrinityViewer(object):
         self.apply_nebula_to_scene(scene)
         scene.objects.append(self.space_object)
         self.scene = scene
+        self.finalize_space_object_scene_state("scene attach")
+
+    def force_object_visible_state(self, obj, limit=1600):
+        if obj is None:
+            return 0
+        queue = [obj]
+        seen = set()
+        changed = 0
+        scanned = 0
+        while queue and scanned < limit:
+            current = queue.pop(0)
+            try:
+                marker = id(current)
+            except Exception:
+                marker = None
+            if marker is not None and marker in seen:
+                continue
+            if marker is not None:
+                seen.add(marker)
+            scanned += 1
+            for attr_name in (
+                "display",
+                "displayEffects",
+                "enabled",
+                "isEnabled",
+                "active",
+                "isActive",
+                "playOnLoad",
+            ):
+                if self.set_bool_attr(current, attr_name, True):
+                    changed += 1
+            for child in self.iter_known_children(current):
+                queue.append(child)
+        return changed
+
+    def collect_controller_variables(self, obj, limit=1600):
+        variables = {}
+        if obj is None:
+            return variables
+        queue = [obj]
+        seen = set()
+        scanned = 0
+        while queue and scanned < limit:
+            current = queue.pop(0)
+            try:
+                marker = id(current)
+            except Exception:
+                marker = None
+            if marker is not None and marker in seen:
+                continue
+            if marker is not None:
+                seen.add(marker)
+            scanned += 1
+            try:
+                for variable in list(getattr(current, "variables", []) or []):
+                    name = getattr(variable, "name", None)
+                    if name:
+                        variables[native_text(name)] = getattr(variable, "value", None)
+            except Exception:
+                pass
+            for child in self.iter_known_children(current):
+                queue.append(child)
+        return variables
+
+    def apply_preview_default_controller_state(self, obj):
+        if obj is None or not hasattr(obj, "SetControllerVariable"):
+            return 0
+        variables = self.collect_controller_variables(obj)
+        changed = 0
+        for name, value in variables.items():
+            lower_name = name.lower()
+            next_value = None
+            if "ismaterialized" in lower_name:
+                next_value = 1.0
+            elif "materializationelapsedtime" in lower_name:
+                duration_name = name.replace("ElapsedTime", "Duration")
+                next_value = float(variables.get(duration_name) or value or 0.0)
+            if next_value is None:
+                continue
+            if self.safe_call(obj, "SetControllerVariable", name, float(next_value)):
+                changed += 1
+        return changed
+
+    def finalize_space_object_scene_state(self, reason):
+        if self.space_object is None:
+            return
+        self.force_object_visible_state(self.space_object)
+        self.apply_preview_default_controller_state(self.space_object)
+        self.safe_call(self.space_object, "StartControllers")
+        self.pump_resource_loads(reason, 1.0)
+        for _index in range(10):
+            try:
+                if self.scene is not None:
+                    self.scene.UpdateScene(self.blue.os.GetSimTime())
+            except Exception:
+                pass
+            if self.device is not None:
+                self.device.Render()
+            self.blue.os.Pump()
 
     def get_current_nebula(self):
         if not self.nebula_cube_maps:

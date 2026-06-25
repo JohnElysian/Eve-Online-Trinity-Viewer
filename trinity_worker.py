@@ -79,6 +79,201 @@ def initialize_client_resource_cache(blue):
     return cache_root
 
 
+def iter_known_children(obj):
+    child_attrs = (
+        "objects",
+        "children",
+        "curveSets",
+        "controllers",
+        "effectChildren",
+        "backgroundObjects",
+        "turretSets",
+        "locators",
+        "locatorSets",
+    )
+    for attr in child_attrs:
+        try:
+            children = getattr(obj, attr)
+        except Exception:
+            children = None
+        if not children:
+            continue
+        try:
+            for child in children:
+                if child is not None:
+                    yield child
+        except Exception:
+            continue
+    if hasattr(obj, "Find"):
+        for class_name in (
+            "trinity.TriCurveSet",
+            "trinity.Tr2CurveSet",
+            "trinity.Tr2Controller",
+            "trinity.Tr2Effect",
+            "trinity.EveChild",
+            "trinity.EveChildContainer",
+            "trinity.EveChildEffect",
+            "trinity.EveTransform",
+            "trinity.EveTurretSet",
+        ):
+            try:
+                for child in obj.Find(class_name, 2):
+                    if child is not None:
+                        yield child
+            except Exception:
+                continue
+
+
+def set_bool_attr(obj, attr_name, value):
+    try:
+        if not hasattr(obj, attr_name):
+            return False
+        setattr(obj, attr_name, bool(value))
+        return True
+    except Exception:
+        return False
+
+
+def force_object_visible_state(obj, limit=1600):
+    if obj is None:
+        return 0
+    queue = [obj]
+    seen = set()
+    changed = 0
+    scanned = 0
+    while queue and scanned < limit:
+        current = queue.pop(0)
+        try:
+            marker = id(current)
+        except Exception:
+            marker = None
+        if marker is not None and marker in seen:
+            continue
+        if marker is not None:
+            seen.add(marker)
+        scanned += 1
+        for attr_name in (
+            "display",
+            "displayEffects",
+            "enabled",
+            "isEnabled",
+            "active",
+            "isActive",
+            "playOnLoad",
+        ):
+            if set_bool_attr(current, attr_name, True):
+                changed += 1
+        for child in iter_known_children(current):
+            queue.append(child)
+    return changed
+
+
+def collect_controller_variables(obj, limit=1600):
+    variables = {}
+    if obj is None:
+        return variables
+    queue = [obj]
+    seen = set()
+    scanned = 0
+    while queue and scanned < limit:
+        current = queue.pop(0)
+        try:
+            marker = id(current)
+        except Exception:
+            marker = None
+        if marker is not None and marker in seen:
+            continue
+        if marker is not None:
+            seen.add(marker)
+        scanned += 1
+        try:
+            for variable in list(getattr(current, "variables", []) or []):
+                name = getattr(variable, "name", None)
+                if name:
+                    variables[str(name)] = getattr(variable, "value", None)
+        except Exception:
+            pass
+        for child in iter_known_children(current):
+            queue.append(child)
+    return variables
+
+
+def apply_preview_default_controller_state(obj):
+    if obj is None or not hasattr(obj, "SetControllerVariable"):
+        return 0
+    variables = collect_controller_variables(obj)
+    changed = 0
+    for name, value in variables.items():
+        lower_name = name.lower()
+        next_value = None
+        if "ismaterialized" in lower_name:
+            next_value = 1.0
+        elif "materializationelapsedtime" in lower_name:
+            duration_name = name.replace("ElapsedTime", "Duration")
+            next_value = float(variables.get(duration_name) or value or 0.0)
+        if next_value is None:
+            continue
+        try:
+            obj.SetControllerVariable(name, float(next_value))
+            changed += 1
+        except Exception:
+            pass
+    return changed
+
+
+def collect_controller_diagnostics(obj, limit=80):
+    rows = []
+    if obj is None:
+        return rows
+    queue = [obj]
+    seen = set()
+    while queue and len(rows) < limit:
+        current = queue.pop(0)
+        try:
+            marker = id(current)
+        except Exception:
+            marker = None
+        if marker is not None and marker in seen:
+            continue
+        if marker is not None:
+            seen.add(marker)
+        class_name = type(current).__name__
+        try:
+            name = getattr(current, "name", None)
+        except Exception:
+            name = None
+        variables = []
+        try:
+            for variable in list(getattr(current, "variables", []) or []):
+                variables.append({
+                    "name": getattr(variable, "name", None),
+                    "value": getattr(variable, "value", None),
+                    "variableType": getattr(variable, "variableType", None),
+                    "enumValues": getattr(variable, "enumValues", None),
+                })
+        except Exception:
+            variables = []
+        states = []
+        try:
+            for state in list(getattr(current, "states", []) or []):
+                states.append({
+                    "name": getattr(state, "name", None),
+                })
+        except Exception:
+            states = []
+        if variables or states or "Controller" in class_name or "StateMachine" in class_name:
+            rows.append({
+                "className": class_name,
+                "name": name,
+                "variables": variables[:24],
+                "states": states[:24],
+                "currentState": getattr(current, "currentState", None),
+            })
+        for child in iter_known_children(current):
+            queue.append(child)
+    return rows
+
+
 def resolve_icon_scene_path(dna):
     race_name = ""
     dna_parts = str(dna or "").split(":")
@@ -160,6 +355,7 @@ def render_turntable(
         space_object.boosters = None
     if hasattr(space_object, "FreezeHighDetailMesh"):
         space_object.FreezeHighDetailMesh()
+    apply_preview_default_controller_state(space_object)
     if hasattr(space_object, "StartControllers"):
         space_object.StartControllers()
 
@@ -183,6 +379,14 @@ def render_turntable(
     scene.backgroundRenderingEnabled = True
     scene.sunDirection = (-0.55, -0.72, 0.42)
     scene.objects.append(space_object)
+    force_object_visible_state(space_object)
+    apply_preview_default_controller_state(space_object)
+    if hasattr(space_object, "StartControllers"):
+        space_object.StartControllers()
+    for _index in range(10):
+        scene.UpdateScene(blue.os.GetSimTime())
+        device.Render()
+        blue.os.Pump()
     blue.resMan.Wait()
     scene.UpdateScene(blue.os.GetSimTime())
     model_radius = float(space_object.GetBoundingSphereRadius())
@@ -322,6 +526,7 @@ def render_turntable(
         "resourceCache": cache_root,
         "scenePath": scene_path,
         "effectDiagnostics": effect_diagnostics,
+        "controllerDiagnostics": collect_controller_diagnostics(space_object),
     }
 
 

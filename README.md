@@ -4,8 +4,8 @@
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=00c2ff">
   </a>
-  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3.1/ElysianJessica-v0.3.1.zip">
-    <img alt="Download v0.3.1" src="https://img.shields.io/badge/download-v0.3.1-7c3aed?style=for-the-badge&logo=github&logoColor=white">
+  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3.2/ElysianJessica-v0.3.2.zip">
+    <img alt="Download v0.3.2" src="https://img.shields.io/badge/download-v0.3.2-7c3aed?style=for-the-badge&logo=github&logoColor=white">
   </a>
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=22c55e">
@@ -15,7 +15,7 @@
 
 <p align="center">
   <a href="https://www.youtube.com/watch?v=LrjwBPszgYA">
-    <img alt="Elysian Jessica turret preview" src="docs/screenshots/1.png" width="900">
+    <img alt="Elysian Jessica weapon preview" src="docs/screenshots/9.png" width="900">
   </a>
 </p>
 
@@ -63,6 +63,22 @@ Watch the preview:
 <table>
   <tr>
     <td width="50%">
+      <img alt="Native EVE weapon preview" src="docs/screenshots/9.png">
+      <br>
+      <strong>Fitted weapons</strong><br>
+      Mount real turret and launcher hardpoints, spawn a target, and inspect
+      live firing previews against native EVE model assets.
+    </td>
+    <td width="50%">
+      <img alt="Triglavian structure material preview" src="docs/screenshots/12.png">
+      <br>
+      <strong>Materialized structures</strong><br>
+      Preview structures with their Trinity material and controller states
+      resolved for standalone inspection.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
       <img alt="Native EVE explosion preview" src="docs/screenshots/7.png">
       <br>
       <strong>Authored explosions</strong><br>
@@ -70,9 +86,9 @@ Watch the preview:
       EVE client runtime.
     </td>
     <td width="50%">
-      <img alt="Stargate and nebula preview" src="docs/screenshots/4.png">
+      <img alt="Station and nebula preview" src="docs/screenshots/11.png">
       <br>
-      <strong>Structures and gates</strong><br>
+      <strong>Stations and structures</strong><br>
       Inspect ships, gates, stations, structures, and other SOF-driven scene
       assets.
     </td>
@@ -106,6 +122,10 @@ Watch the preview:
     <img alt="Close explosion preview" src="docs/screenshots/6.png" width="420">
     <img alt="Wide explosion preview" src="docs/screenshots/7.png" width="420">
     <img alt="Nebula preview" src="docs/screenshots/8.png" width="420">
+    <img alt="Weapon hardpoint preview" src="docs/screenshots/9.png" width="420">
+    <img alt="Wide beam preview" src="docs/screenshots/10.png" width="420">
+    <img alt="Station preview" src="docs/screenshots/11.png" width="420">
+    <img alt="Structure material preview" src="docs/screenshots/12.png" width="420">
   </p>
 </details>
 

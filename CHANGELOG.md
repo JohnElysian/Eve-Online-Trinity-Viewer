@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.3.2 - Triglavian Materialization Fix
+
+Jessica v0.3.2 fixes Triglavian structures that could appear invisible in
+Material view while still showing in White or Wireframe modes.
+
+### Changed
+
+- Preview loading now advances Trinity controller materialization variables to
+  their fully visible state for standalone inspection.
+- Threshold Werpost, Damaged Werpost, Malfunctioning Werpost, Entropic
+  Disintegrator Werpost, Triglavian Stellar Accelerator, and Triglavian Stellar
+  Observatory now render through the Material path instead of relying on
+  non-material diagnostic views.
+- Static preview renders include controller diagnostics for materialization
+  variables, making future visual reports easier to verify.
+
+### Notes
+
+- Requires a local EVE Online installation.
+- This release does not include EVE client assets.
+
 ## v0.3.1 - Model Animation Enumeration Fix
 
 Jessica v0.3.1 restores the animation picker to a discovery-first model view.
