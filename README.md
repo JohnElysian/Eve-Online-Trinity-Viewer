@@ -4,8 +4,8 @@
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=00c2ff">
   </a>
-  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3.2/ElysianJessica-v0.3.2.zip">
-    <img alt="Download v0.3.2" src="https://img.shields.io/badge/download-v0.3.2-7c3aed?style=for-the-badge&logo=github&logoColor=white">
+  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3.3/ElysianJessica-v0.3.3.zip">
+    <img alt="Download v0.3.3" src="https://img.shields.io/badge/download-v0.3.3-7c3aed?style=for-the-badge&logo=github&logoColor=white">
   </a>
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=22c55e">
@@ -42,12 +42,12 @@ it reads them from your local EVE installation.
 - SKIN material previews for supported ships.
 - Exposed model animation, curve, controller, and event entries where a model
   publishes them through Trinity.
-- Native audio event previews for warp, gate, booster, and other shipped sound
-  events.
+- Native audio event previews for warp, gate, booster, explosion, and other
+  shipped sound events.
 - Real turret and launcher hardpoint mounting.
 - Dummy target preview with firing cycles.
-- Native projectile, beam, missile-trail, impact, booster, and explosion visual
-  paths where the client asset supports them.
+- Native projectile, beam, missile-trail, impact, booster, explosion, and
+  attached audio paths where the client asset supports them.
 - Close-up camera controls for inspecting tiny and huge models.
 - Automatic local runtime catalogue setup. Normal users do not need Elysian Eve,
   ClientSDE, Node.js, or any data-sync knowledge.

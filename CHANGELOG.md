@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.3 - Native Audio And Explosion Playback
+
+Jessica v0.3.3 fixes native sound playback and restores explosion playback
+through the same authored Trinity child-explosion path used by the EVE client.
+
+### Changed
+
+- World/space sound previews now use a model-attached `audio2.AudEmitter`
+  before falling back to UI playback.
+- Jessica now keeps the native audio listener aligned with the preview camera
+  so 3D Wwise events are audible instead of silently attenuated away.
+- Weapon audio warmup no longer has an unreachable ready-state branch.
+- Explosion playback now follows the client `SpaceObjectExplosionManager`
+  pattern: configure child explosion transforms, append the effect to the
+  scene, then play the authored `EveChildExplosion` entries.
+- Explosion audio curves are preserved and scaled instead of being stripped out
+  of the authored effect graph.
+- The current local viewer control polish, cinematic sliders, hull damage
+  preview, and latest weapon preview improvements are included in the public
+  build.
+
+### Notes
+
+- Requires a local EVE Online installation.
+- This release does not include EVE client assets.
+
 ## v0.3.2 - Triglavian Materialization Fix
 
 Jessica v0.3.2 fixes Triglavian structures that could appear invisible in

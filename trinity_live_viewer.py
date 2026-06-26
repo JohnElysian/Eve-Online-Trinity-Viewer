@@ -49,6 +49,7 @@ KERNEL32 = ctypes.windll.kernel32
 GDI32 = ctypes.windll.gdi32
 UXTHEME = ctypes.windll.uxtheme
 DWMAPI = ctypes.windll.dwmapi
+COMCTL32 = ctypes.windll.comctl32
 
 WNDPROC = ctypes.WINFUNCTYPE(
     LRESULT,
@@ -93,6 +94,7 @@ WM_QUIT = 18
 WM_SIZE = 5
 WM_ERASEBKGND = 20
 WM_KEYDOWN = 256
+WM_HSCROLL = 276
 WM_LBUTTONDOWN = 513
 WM_LBUTTONUP = 514
 WM_RBUTTONDOWN = 516
@@ -103,6 +105,7 @@ WM_SETFONT = 48
 WM_SETREDRAW = 11
 WM_CTLCOLORLISTBOX = 308
 WM_CTLCOLORBTN = 309
+WM_CTLCOLOREDIT = 307
 WM_CTLCOLORSTATIC = 312
 WM_USER = 1024
 VK_ESCAPE = 27
@@ -128,6 +131,13 @@ BST_CHECKED = 1
 LBN_DBLCLK = 2
 CBN_SELCHANGE = 1
 EN_CHANGE = 0x0300
+TBS_AUTOTICKS = 0x0001
+TBM_GETPOS = WM_USER
+TBM_SETPOS = WM_USER + 5
+TBM_SETRANGE = WM_USER + 6
+TBM_SETTICFREQ = WM_USER + 20
+ICC_BAR_CLASSES = 0x00000004
+TRANSPARENT = 1
 
 CONTROL_PANEL_WIDTH = 500
 SEARCH_DEBOUNCE_SECONDS = 0.16
@@ -162,11 +172,18 @@ IDC_RESET_CAMERA = 1033
 IDC_SKIN_LIST = 1034
 IDC_SOUND_LIST = 1035
 IDC_PLAY_SOUND = 1036
+IDC_ROTATION_SPEED = 1040
+IDC_EXPLOSION_SPEED = 1041
+IDC_HULL_DAMAGE = 1042
 IDC_SEARCH_STATUS = 1201
 IDC_ANIMATION_LABEL = 1202
 IDC_WEAPON_LABEL = 1203
 IDC_SKIN_LABEL = 1204
 IDC_SOUND_LABEL = 1205
+IDC_CINEMATIC_LABEL = 1206
+IDC_ROTATION_SPEED_LABEL = 1207
+IDC_EXPLOSION_SPEED_LABEL = 1208
+IDC_HULL_DAMAGE_LABEL = 1209
 
 FILTER_CONTROLS = (
     (IDC_FILTER_SHIPS, "ships"),
@@ -185,6 +202,42 @@ VISUAL_MODES = (
     ("texcoord", 1),
     ("overdraw", 4),
 )
+
+JESSICA_AUDIO_PREVIEW_EVENTS = (
+    ("Weapons", "Projectile impact - close", "ship_impact_mh1_play"),
+    ("Weapons", "Energy impact", "ship_impact_he1_play"),
+    ("Weapons", "Missile launch - light", "missile_outburst_light_play"),
+    ("Weapons", "Missile launch - rocket", "missile_outburst_rocket_play"),
+    ("Weapons", "Missile impact - EM", "missile_explosion_em_medium_play"),
+    ("Weapons", "Missile impact - explosive", "missile_explosion_explosive_small_play"),
+    ("Boosters", "Microwarpdrive", "microwarpdrive_t_play"),
+    ("Boosters", "Battleship microwarpdrive", "microwarpdrive_bs_play"),
+    ("Boosters", "Afterburner", "afterburner_c_play"),
+    ("Boosters", "Ship booster", "ship_engine_M_booster_1st_on"),
+    ("Explosions", "Capital explosion", "ecx_generic_explosive_long_global_01b_play"),
+    ("Explosions", "Local explosion", "ecx_generic_explosive_long_individual_01b_play"),
+    ("Gate", "Jump gate ambience", "worldobject_jumpgate_atmo_play"),
+    ("Gate", "Jump gate powered", "worldobject_jumpgate_state_one_play"),
+    ("World", "Wormhole shrinking", "worldobject_wormhole_shrinking_play"),
+    ("World", "Caldari station ambience", "worldobject_station_caldari_play"),
+    ("UI", "UI invalid action", "ui_radial_invalid_play"),
+    ("UI", "Omega upgrade fanfare", "upgrade_to_omega_play"),
+    ("Music", "Ambient track 021", "music_ambient021_play"),
+)
+
+AUDIO_DIRECT_DENY_PREFIXES = (
+    "ship_turret_",
+    "ship_impact_sp",
+    "ship_impact_sh",
+    "ship_impact_se",
+    "turret_move_",
+    "play_outburst_",
+    "ship_anim_",
+)
+
+AUDIO_DIRECT_DENY_EXACT = set((
+    "ship_engine_xs_booster_3rd_on",
+))
 
 
 class WNDCLASS(ctypes.Structure):
@@ -226,6 +279,13 @@ class MSG(ctypes.Structure):
         ("lParam", LPARAM),
         ("time", ctypes.wintypes.DWORD),
         ("pt", POINT),
+    ]
+
+
+class INITCOMMONCONTROLSEX(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.wintypes.DWORD),
+        ("dwICC", ctypes.wintypes.DWORD),
     ]
 
 
@@ -309,6 +369,8 @@ USER32.SetWindowPos.argtypes = [
     ctypes.c_uint,
 ]
 USER32.SetWindowPos.restype = ctypes.wintypes.BOOL
+USER32.GetDlgCtrlID.argtypes = [ctypes.wintypes.HWND]
+USER32.GetDlgCtrlID.restype = ctypes.c_int
 KERNEL32.GetModuleHandleA.argtypes = [ctypes.wintypes.LPCSTR]
 KERNEL32.GetModuleHandleA.restype = ctypes.wintypes.HINSTANCE
 KERNEL32.GetLastError.argtypes = []
@@ -321,6 +383,8 @@ GDI32.SetTextColor.argtypes = [ctypes.wintypes.HDC, ctypes.wintypes.DWORD]
 GDI32.SetTextColor.restype = ctypes.wintypes.DWORD
 GDI32.SetBkColor.argtypes = [ctypes.wintypes.HDC, ctypes.wintypes.DWORD]
 GDI32.SetBkColor.restype = ctypes.wintypes.DWORD
+GDI32.SetBkMode.argtypes = [ctypes.wintypes.HDC, ctypes.c_int]
+GDI32.SetBkMode.restype = ctypes.c_int
 GDI32.CreateFontA.argtypes = [
     ctypes.c_int,
     ctypes.c_int,
@@ -338,6 +402,8 @@ GDI32.CreateFontA.argtypes = [
     ctypes.wintypes.LPCSTR,
 ]
 GDI32.CreateFontA.restype = HFONT
+COMCTL32.InitCommonControlsEx.argtypes = [ctypes.POINTER(INITCOMMONCONTROLSEX)]
+COMCTL32.InitCommonControlsEx.restype = ctypes.wintypes.BOOL
 UXTHEME.SetWindowTheme.argtypes = [
     ctypes.wintypes.HWND,
     ctypes.wintypes.LPCWSTR,
@@ -368,6 +434,10 @@ def hiword_signed(value):
 
 def hiword(value):
     return (int(value) >> 16) & 0xffff
+
+
+def makelong(low, high):
+    return (int(low) & 0xffff) | ((int(high) & 0xffff) << 16)
 
 
 def get_client_size(hwnd):
@@ -456,6 +526,12 @@ class LiveTrinityViewer(object):
         self.current_asset = self.resolve_current_asset()
         self.weapon_catalog = self.load_weapon_catalog()
         self.audio_events = self.load_audio_events()
+        self.audio_events_by_name = dict(
+            (native_text(event.get("event")).lower(), event)
+            for event in self.audio_events
+            if event.get("event")
+        )
+        self.audio_preview_events = self.build_audio_preview_events()
         self.armed_turret_sets = []
         self.armed_weapon = None
         self.selected_weapon_index = -1
@@ -491,6 +567,9 @@ class LiveTrinityViewer(object):
         self.zoom = 1.0
         self.camera_pan = [0.0, 0.0, 0.0]
         self.light_scale = 1.1
+        self.rotation_speed = 1.0
+        self.explosion_speed = 1.0
+        self.hull_damage_preview = 0.0
         self.post_enabled = True
         self.after_effects_enabled = True
         self.boosters_enabled = True
@@ -510,10 +589,21 @@ class LiveTrinityViewer(object):
         self.tri = None
         self.audio2 = None
         self.audio_manager = None
+        self.audio_manager_wrapper = None
+        self.ui_audio_manager_wrapper = None
         self.ui_audio_player = None
+        self.music_audio_player = None
         self.audio_emitter = None
+        self.audio_listener = None
         self.audio_ready = False
+        self.weapon_audio_ready = False
+        self.weapon_audio_enabled = os.environ.get(
+            "ELYSIAN_JESSICA_WEAPON_AUDIO",
+            "",
+        ).strip() == "1"
         self.audio_last_error = ""
+        self.audio_loaded_banks = set()
+        self.runtime_audio_metadata = None
         self.geo2 = None
         self.trinity_package = None
         self.device = None
@@ -537,9 +627,45 @@ class LiveTrinityViewer(object):
         self.panel_visible = True
         self.controls = {}
         self.control_buffers = []
-        self.panel_brush = GDI32.CreateSolidBrush(colorref(15, 22, 31))
+        self.control_ids_by_hwnd = {}
+        self.panel_brush = GDI32.CreateSolidBrush(colorref(7, 13, 22))
+        self.field_brush = GDI32.CreateSolidBrush(colorref(11, 20, 32))
+        self.soft_panel_brush = GDI32.CreateSolidBrush(colorref(14, 26, 41))
+        self.button_brush = GDI32.CreateSolidBrush(colorref(18, 35, 55))
         self.panel_font = GDI32.CreateFontA(
             -16,
+            0,
+            0,
+            0,
+            400,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            5,
+            0,
+            ctypes.c_char_p("Segoe UI"),
+        )
+        self.panel_header_font = GDI32.CreateFontA(
+            -19,
+            0,
+            0,
+            0,
+            600,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            5,
+            0,
+            ctypes.c_char_p("Segoe UI Semibold"),
+        )
+        self.panel_small_font = GDI32.CreateFontA(
+            -13,
             0,
             0,
             0,
@@ -694,8 +820,80 @@ class LiveTrinityViewer(object):
                 "event": event_name,
                 "label": native_text((event or {}).get("label") or event_name),
                 "source": native_text((event or {}).get("source") or ""),
+                "category": native_text((event or {}).get("category") or "Audio"),
+                "kind": native_text((event or {}).get("kind") or "emitter"),
+                "banks": [
+                    native_text(bank)
+                    for bank in ((event or {}).get("banks") or [])
+                    if bank
+                ],
+                "isLoop": bool((event or {}).get("isLoop")),
+                "is2D": bool((event or {}).get("is2D")),
+                "playbackSeconds": (event or {}).get("playbackSeconds"),
+                "eventsStoppedBy": [
+                    native_text(stop_event)
+                    for stop_event in ((event or {}).get("eventsStoppedBy") or [])
+                    if stop_event
+                ],
             })
         return usable
+
+    def build_audio_preview_events(self):
+        previews = []
+        seen = set()
+        for category, label, event_name in JESSICA_AUDIO_PREVIEW_EVENTS:
+            event = self.get_audio_event(event_name)
+            if not event:
+                continue
+            key = native_text(event_name).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            preview = dict(event)
+            preview["category"] = category
+            preview["label"] = label
+            preview["previewSafe"] = True
+            previews.append(preview)
+
+        for event in self.audio_events:
+            event_name = native_text(event.get("event") or "")
+            key = event_name.lower()
+            if key in seen or not self.is_direct_audio_preview_safe(event_name, event):
+                continue
+            seen.add(key)
+            preview = dict(event)
+            preview["previewSafe"] = True
+            previews.append(preview)
+            if len(previews) >= 180:
+                break
+        return previews
+
+    def is_direct_audio_preview_safe(self, event_name, event=None):
+        name = native_text(event_name).lower()
+        if not name or name in AUDIO_DIRECT_DENY_EXACT:
+            return False
+        if any(name.startswith(prefix) for prefix in AUDIO_DIRECT_DENY_PREFIXES):
+            return False
+        if name.endswith("_stop") or name.endswith("_pause") or name.endswith("_resume"):
+            return False
+        event = event or self.get_audio_event(name) or {}
+        banks = [native_text(bank).lower() for bank in (event.get("banks") or [])]
+        if event.get("is2D"):
+            return True
+        if "music.bnk" in banks or "music_essential.bnk" in banks:
+            return True
+        if any(token in name for token in (
+            "missile_outburst",
+            "missile_explosion",
+            "microwarpdrive",
+            "afterburner",
+            "worldobject_jumpgate",
+            "worldobject_wormhole",
+            "worldobject_station",
+            "ecx_generic_explosive",
+        )):
+            return True
+        return False
 
     def parse_search_query(self, text):
         filters = {}
@@ -988,7 +1186,7 @@ class LiveTrinityViewer(object):
             panel_x,
             panel_y,
             CONTROL_PANEL_WIDTH + 42,
-            780,
+            900,
             NULL,
             NULL,
             hinstance,
@@ -1053,10 +1251,25 @@ class LiveTrinityViewer(object):
         if self.panel_font:
             USER32.SendMessageA(hwnd, WM_SETFONT, self.panel_font, 1)
         self.controls[control_id] = hwnd
+        self.control_ids_by_hwnd[int(hwnd)] = control_id
         return hwnd
 
+    def configure_slider(self, control_id, minimum, maximum, position, tick_frequency=25):
+        hwnd = self.controls.get(control_id)
+        if not hwnd:
+            return
+        USER32.SendMessageA(hwnd, TBM_SETRANGE, 1, makelong(minimum, maximum))
+        USER32.SendMessageA(hwnd, TBM_SETTICFREQ, tick_frequency, 0)
+        USER32.SendMessageA(hwnd, TBM_SETPOS, 1, position)
+
     def create_controls(self):
+        init_controls = INITCOMMONCONTROLSEX()
+        init_controls.dwSize = ctypes.sizeof(INITCOMMONCONTROLSEX)
+        init_controls.dwICC = ICC_BAR_CLASSES
+        COMCTL32.InitCommonControlsEx(ctypes.byref(init_controls))
         self.create_child("STATIC", "Jessica Asset Library", 0, 1200, 0, 0, 100, 20)
+        if self.panel_header_font:
+            USER32.SendMessageA(self.controls[1200], WM_SETFONT, self.panel_header_font, 1)
         search_style = WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL
         self.create_child("EDIT", "", search_style, IDC_SEARCH, 0, 0, 100, 26)
         self.create_child("STATIC", "", 0, IDC_SEARCH_STATUS, 0, 0, 100, 18)
@@ -1144,6 +1357,50 @@ class LiveTrinityViewer(object):
             88,
             24,
         )
+        self.create_child("STATIC", "Cinematic Controls", 0, IDC_CINEMATIC_LABEL, 0, 0, 100, 18)
+        if self.panel_header_font:
+            USER32.SendMessageA(
+                self.controls[IDC_CINEMATIC_LABEL],
+                WM_SETFONT,
+                self.panel_header_font,
+                1,
+            )
+        self.create_child("STATIC", "", 0, IDC_ROTATION_SPEED_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "msctls_trackbar32",
+            "",
+            TBS_AUTOTICKS | WS_TABSTOP,
+            IDC_ROTATION_SPEED,
+            0,
+            0,
+            100,
+            28,
+        )
+        self.create_child("STATIC", "", 0, IDC_EXPLOSION_SPEED_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "msctls_trackbar32",
+            "",
+            TBS_AUTOTICKS | WS_TABSTOP,
+            IDC_EXPLOSION_SPEED,
+            0,
+            0,
+            100,
+            28,
+        )
+        self.create_child("STATIC", "", 0, IDC_HULL_DAMAGE_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "msctls_trackbar32",
+            "",
+            TBS_AUTOTICKS | WS_TABSTOP,
+            IDC_HULL_DAMAGE,
+            0,
+            0,
+            100,
+            28,
+        )
+        self.configure_slider(IDC_ROTATION_SPEED, 0, 300, 100, 50)
+        self.configure_slider(IDC_EXPLOSION_SPEED, 10, 400, 100, 50)
+        self.configure_slider(IDC_HULL_DAMAGE, 0, 100, 0, 10)
         list_style = WS_BORDER | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | WS_TABSTOP
         self.create_child("LISTBOX", "", list_style, IDC_ASSET_LIST, 0, 0, 100, 100)
         self.create_child("BUTTON", "Load Asset", BS_PUSHBUTTON | WS_TABSTOP, IDC_LOAD, 0, 0, 64, 24)
@@ -1352,6 +1609,39 @@ class LiveTrinityViewer(object):
             26,
             True,
         )
+        USER32.MoveWindow(
+            self.controls[IDC_CINEMATIC_LABEL],
+            x,
+            y + 322,
+            content_width,
+            22,
+            True,
+        )
+        slider_label_width = 154
+        slider_x = x + slider_label_width
+        slider_width = max(140, content_width - slider_label_width)
+        slider_rows = (
+            (IDC_ROTATION_SPEED_LABEL, IDC_ROTATION_SPEED, y + 352),
+            (IDC_EXPLOSION_SPEED_LABEL, IDC_EXPLOSION_SPEED, y + 384),
+            (IDC_HULL_DAMAGE_LABEL, IDC_HULL_DAMAGE, y + 416),
+        )
+        for label_id, slider_id, row_y in slider_rows:
+            USER32.MoveWindow(
+                self.controls[label_id],
+                x,
+                row_y + 5,
+                slider_label_width - 8,
+                20,
+                True,
+            )
+            USER32.MoveWindow(
+                self.controls[slider_id],
+                slider_x,
+                row_y,
+                slider_width,
+                30,
+                True,
+            )
         rows = [
             (IDC_LOAD, IDC_PREV, IDC_NEXT),
             (IDC_MODE, IDC_NEBULA, IDC_RESET_CAMERA),
@@ -1362,13 +1652,13 @@ class LiveTrinityViewer(object):
         ]
         button_h = 26
         button_block_h = (len(rows) * button_h) + ((len(rows) - 1) * gap)
-        button_y = y + max(340, panel_height - button_block_h)
+        button_y = y + max(560, panel_height - button_block_h)
         USER32.MoveWindow(
             self.controls[IDC_ASSET_LIST],
             x,
-            y + 318,
+            y + 456,
             content_width,
-            max(90, button_y - (y + 326)),
+            max(90, button_y - (y + 464)),
             True,
         )
         button_w = max(72, int((content_width - (gap * 2)) / 3))
@@ -1477,16 +1767,18 @@ class LiveTrinityViewer(object):
 
     def populate_audio_list(self):
         labels = [
-            "%s  |  %s" % (
+            "%s  |  %s  |  %s%s" % (
+                event.get("category") or "Audio",
                 event.get("label") or event.get("event"),
                 event.get("event"),
+                "  |  loop" if event.get("isLoop") else "",
             )
-            for event in self.audio_events
+            for event in self.audio_preview_events
         ]
         if not labels:
             labels = ["No sound events found"]
         self.populate_combo(IDC_SOUND_LIST, labels, 0)
-        self.selected_audio_index = 0 if self.audio_events else -1
+        self.selected_audio_index = 0 if self.audio_preview_events else -1
 
     def weapon_display_label(self, weapon):
         kind = native_text(
@@ -1808,6 +2100,35 @@ class LiveTrinityViewer(object):
         if hwnd:
             USER32.EnableWindow(hwnd, bool(enabled))
 
+    def handle_control_color(self, message, hdc, hwnd):
+        control_id = self.control_ids_by_hwnd.get(int(hwnd))
+        if message in (WM_CTLCOLORSTATIC, WM_CTLCOLORBTN):
+            GDI32.SetBkMode(hdc, TRANSPARENT)
+            if control_id in (
+                1200,
+                IDC_CINEMATIC_LABEL,
+                IDC_SKIN_LABEL,
+                IDC_ANIMATION_LABEL,
+                IDC_WEAPON_LABEL,
+                IDC_SOUND_LABEL,
+            ):
+                GDI32.SetTextColor(hdc, colorref(112, 226, 255))
+            elif control_id in (
+                IDC_SEARCH_STATUS,
+                IDC_ROTATION_SPEED_LABEL,
+                IDC_EXPLOSION_SPEED_LABEL,
+                IDC_HULL_DAMAGE_LABEL,
+            ):
+                GDI32.SetTextColor(hdc, colorref(190, 214, 230))
+            else:
+                GDI32.SetTextColor(hdc, colorref(225, 238, 247))
+            return self.panel_brush
+        if message in (WM_CTLCOLORLISTBOX, WM_CTLCOLOREDIT):
+            GDI32.SetTextColor(hdc, colorref(225, 238, 247))
+            GDI32.SetBkColor(hdc, colorref(11, 20, 32))
+            return self.field_brush
+        return self.panel_brush
+
     def refresh_action_buttons(self):
         self.set_control_enabled(
             IDC_EXPLODE,
@@ -1839,11 +2160,11 @@ class LiveTrinityViewer(object):
         )
         self.set_control_enabled(
             IDC_SOUND_LIST,
-            bool(self.audio_events),
+            bool(self.audio_preview_events),
         )
         self.set_control_enabled(
             IDC_PLAY_SOUND,
-            bool(self.audio_events),
+            bool(self.audio_preview_events),
         )
 
     def sync_control_text(self):
@@ -1864,7 +2185,38 @@ class LiveTrinityViewer(object):
         self.set_control_text(IDC_FIRE_DUMMY, "%s Dummy" % (
             "Stop" if self.firing_dummy else "Fire",
         ))
+        self.set_control_text(IDC_ROTATION_SPEED_LABEL, "Rotation %.2fx" % self.rotation_speed)
+        self.set_control_text(IDC_EXPLOSION_SPEED_LABEL, "Explosion %.2fx" % self.explosion_speed)
+        self.set_control_text(IDC_HULL_DAMAGE_LABEL, "Hull damage %.0f%%" % (
+            self.hull_damage_preview * 100.0,
+        ))
         self.refresh_action_buttons()
+
+    def get_slider_position(self, control_id):
+        hwnd = self.controls.get(control_id)
+        if not hwnd:
+            return 0
+        return int(USER32.SendMessageA(hwnd, TBM_GETPOS, 0, 0))
+
+    def handle_slider_changed(self, hwnd):
+        control_id = self.control_ids_by_hwnd.get(int(hwnd))
+        if control_id == IDC_ROTATION_SPEED:
+            self.rotation_speed = max(0.0, min(3.0, self.get_slider_position(control_id) / 100.0))
+            self.sync_control_text()
+            self.update_title(force=True)
+            return 0
+        if control_id == IDC_EXPLOSION_SPEED:
+            self.explosion_speed = max(0.1, min(4.0, self.get_slider_position(control_id) / 100.0))
+            self.sync_control_text()
+            self.update_title(force=True)
+            return 0
+        if control_id == IDC_HULL_DAMAGE:
+            self.hull_damage_preview = max(0.0, min(1.0, self.get_slider_position(control_id) / 100.0))
+            self.apply_damage_preview()
+            self.sync_control_text()
+            self.update_title(force=True)
+            return 0
+        return None
 
     def initialize_trinity(self):
         import blue
@@ -1920,6 +2272,121 @@ class LiveTrinityViewer(object):
             tri.TriTextureRes(),
         )
 
+    def get_audio_metadata(self):
+        metadata = self.catalog_payload.get("audioMetadata", {})
+        return metadata if isinstance(metadata, dict) else {}
+
+    def get_runtime_audio_metadata(self):
+        if self.runtime_audio_metadata is not None:
+            return self.runtime_audio_metadata
+        try:
+            from fsdBuiltData.common.audioMetadata import AudioMetadata
+            self.runtime_audio_metadata = AudioMetadata().GetData()
+            return self.runtime_audio_metadata
+        except Exception:
+            self.runtime_audio_metadata = self.get_audio_metadata()
+            return self.runtime_audio_metadata
+
+    def get_default_audio_banks(self):
+        return [
+            "Init.bnk",
+            "Common.bnk",
+            "Interface.bnk",
+            "ShipEffects.bnk",
+            "ShipAnimations.bnk",
+            "Boosters.bnk",
+            "Turrets.bnk",
+            "Effects.bnk",
+            "Structures.bnk",
+            "Modules.bnk",
+            "Deployables.bnk",
+            "Stations.bnk",
+            "Hangar.bnk",
+            "Music.bnk",
+            "Music_essential.bnk",
+        ]
+
+    def get_audio_event(self, event_name):
+        return self.audio_events_by_name.get(native_text(event_name).lower())
+
+    def normalize_audio_banks(self, banks):
+        normalized = []
+        seen = set()
+        for bank in banks or []:
+            bank_name = native_text(bank)
+            if not bank_name:
+                continue
+            if not bank_name.lower().endswith(".bnk"):
+                bank_name = "%s.bnk" % bank_name
+            key = bank_name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(bank_name)
+        return normalized
+
+    def load_audio_banks(self, banks):
+        banks = self.normalize_audio_banks(banks)
+        if not banks:
+            return True
+        loaded = self.get_loaded_audio_bank_names()
+        missing = [
+            bank
+            for bank in banks
+            if bank.lower() not in loaded
+        ]
+        if missing:
+            try:
+                if self.audio_manager_wrapper is not None:
+                    self.audio_manager_wrapper.LoadSoundBanks(missing)
+                elif self.audio_manager is not None:
+                    for bank in missing:
+                        for candidate in (bank, bank.replace(".bnk", ""), "essential_media/%s" % bank):
+                            try:
+                                self.audio_manager.LoadBank(candidate)
+                                break
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+        return self.wait_for_audio_banks(banks)
+
+    def get_loaded_audio_bank_names(self):
+        loaded = set(self.audio_loaded_banks)
+        if self.audio_manager is None:
+            return loaded
+        try:
+            for bank in self.audio_manager.GetLoadedSoundBanks() or []:
+                loaded.add(native_text(bank).lower())
+        except Exception:
+            pass
+        return loaded
+
+    def wait_for_audio_banks(self, banks, max_seconds=None):
+        banks = self.normalize_audio_banks(banks)
+        if not banks:
+            return True
+        if max_seconds is None:
+            max_seconds = 6.0 if any(bank.lower() in ("turrets.bnk", "effects.bnk", "structures.bnk") for bank in banks) else 2.0
+        deadline = time.time() + max_seconds
+        wanted = set(bank.lower() for bank in banks)
+        while True:
+            loaded = self.get_loaded_audio_bank_names()
+            if wanted.issubset(loaded):
+                self.audio_loaded_banks.update(loaded)
+                return True
+            if time.time() >= deadline:
+                return False
+            try:
+                if self.blue is not None:
+                    self.blue.os.Pump()
+                if self.device is not None:
+                    self.device.Render()
+                self.tick_audio_runtime()
+            except Exception:
+                pass
+            time.sleep(0.03)
+
     def initialize_audio_runtime(self):
         if self.audio_ready:
             return True
@@ -1931,50 +2398,147 @@ class LiveTrinityViewer(object):
                 return False
         audio2 = self.audio2
         try:
-            if hasattr(audio2, "GetOrCreateManager"):
-                self.audio_manager = audio2.GetOrCreateManager()
-            if self.audio_manager is not None and hasattr(audio2, "AudSettings"):
-                settings = audio2.AudSettings()
-                settings.applicationName = "Elysian Jessica"
-                settings.baseSoundbankPath = "res:/audio"
-                settings.soundbankLanguage = "English(US)"
+            metadata = self.get_runtime_audio_metadata()
+            default_banks = self.get_default_audio_banks()
+            self.audio_manager = None
+            self.audio_manager_wrapper = None
+            self.ui_audio_manager_wrapper = None
+            try:
+                from eveaudio.eveaudiomanager import CreateAudioManager
+                from eveaudio.ui import UIAudioManager
+                self.audio_manager_wrapper = CreateAudioManager(
+                    "res:/Audio/",
+                    "en",
+                    "Eve Client",
+                )
+                self.audio_manager_wrapper.Enable()
+                self.audio_manager_wrapper.LoadSoundBanks(default_banks)
+                self.audio_manager = self.audio_manager_wrapper.manager
+                self.ui_audio_manager_wrapper = UIAudioManager()
+                self.ui_audio_player = self.ui_audio_manager_wrapper.GetUIEmitter()
+                if hasattr(audio2, "GetMusicPlayer"):
+                    self.music_audio_player = audio2.GetMusicPlayer()
+                self.wait_for_audio_banks(["Init.bnk", "Common.bnk"], 2.0)
+            except Exception:
+                self.audio_last_error = traceback.format_exc()
+                self.audio_manager = None
+                self.audio_manager_wrapper = None
+                self.ui_audio_manager_wrapper = None
+            if os.environ.get("ELYSIAN_JESSICA_CARBON_AUDIO", "").strip() == "1":
                 try:
-                    settings.spatialAudioEnabled = False
+                    from audio2.audiomanager import AudioManager as CarbonAudioManager
+                    try:
+                        import eveaudio
+                        manager_default_banks = list(getattr(eveaudio, "EVE_COMMON_BANKS", []) or [])
+                    except Exception:
+                        manager_default_banks = []
+                    self.audio_manager_wrapper = CarbonAudioManager(
+                        "res:/Audio/",
+                        "English(US)",
+                        "Eve Client",
+                        spatialAudioEnabled=False,
+                    )
+                    self.audio_manager_wrapper.Initialize(
+                        metadata,
+                        defaultSoundBanks=manager_default_banks,
+                    )
+                    self.audio_manager_wrapper.Enable(default_banks)
+                    self.audio_manager = self.audio_manager_wrapper.manager
+                    self.wait_for_audio_banks(["Init.bnk", "Common.bnk"], 2.0)
                 except Exception:
-                    pass
-                try:
+                    self.audio_last_error = traceback.format_exc()
+                    print("[live] carbon audio manager init failed:\n%s" % self.audio_last_error, file=sys.stderr)
+                    self.audio_manager = None
+                    self.audio_manager_wrapper = None
+            try:
+                if self.audio_manager is None:
+                    self.audio_manager = audio2.GetOrCreateManager()
+                    settings = audio2.AudSettings()
+                    settings.applicationName = "Eve Client"
+                    settings.baseSoundbankPath = "res:/Audio/"
+                    settings.soundbankLanguage = "English(US)"
+                    try:
+                        settings.spatialAudioEnabled = False
+                    except Exception:
+                        pass
                     self.audio_manager.UpdateSettings(settings)
-                except Exception:
-                    pass
-                banks = [
-                    "Init.bnk",
-                    "Music.bnk",
-                    "Music_essential.bnk",
-                    "Hangar.bnk",
-                    108,
-                    113,
-                    114,
-                    115,
-                    116,
-                    117,
-                    118,
-                    119,
-                    120,
-                    121,
-                ]
+                    if metadata and hasattr(audio2, "GetStaticDataRepository"):
+                        audio2.GetStaticDataRepository().Initialize(metadata)
+                    self.audio_manager.Enable(default_banks)
+                    try:
+                        audio2.GetListener()
+                    except Exception:
+                        pass
+                    self.wait_for_audio_banks(["Init.bnk", "Common.bnk"], 2.0)
+            except Exception:
+                self.audio_last_error = traceback.format_exc()
+                print("[live] audio manager init failed:\n%s" % self.audio_last_error, file=sys.stderr)
+                self.audio_manager = None
+                self.audio_manager_wrapper = None
+            if self.audio_manager is None:
                 try:
-                    self.audio_manager.Enable(banks)
-                except Exception:
-                    for bank in banks:
+                    if hasattr(audio2, "AudioManager"):
+                        self.audio_manager = audio2.AudioManager()
+                        settings = audio2.AudSettings()
+                        settings.applicationName = "Eve Client"
+                        settings.baseSoundbankPath = "res:/Audio/"
+                        settings.soundbankLanguage = "English(US)"
                         try:
-                            self.audio_manager.LoadBank(bank)
+                            settings.spatialAudioEnabled = False
                         except Exception:
                             pass
-            if hasattr(audio2, "GetUIPlayer"):
+                        try:
+                            if metadata and hasattr(audio2, "GetStaticDataRepository"):
+                                audio2.GetStaticDataRepository().Initialize(metadata)
+                        except Exception:
+                            pass
+                        self.audio_manager.Enable(settings, default_banks)
+                        self.wait_for_audio_banks(["Init.bnk", "Common.bnk"], 2.0)
+                except Exception:
+                    self.audio_last_error = traceback.format_exc()
+                    print("[live] audio native init failed:\n%s" % self.audio_last_error, file=sys.stderr)
+                    self.audio_manager_wrapper = None
+                    if hasattr(audio2, "GetOrCreateManager"):
+                        self.audio_manager = audio2.GetOrCreateManager()
+                    if self.audio_manager is not None and metadata and hasattr(audio2, "GetStaticDataRepository"):
+                        try:
+                            audio2.GetStaticDataRepository().Initialize(metadata)
+                        except Exception:
+                            pass
+                    if self.audio_manager is not None and hasattr(audio2, "AudSettings"):
+                        settings = audio2.AudSettings()
+                        settings.applicationName = "Eve Client"
+                        settings.baseSoundbankPath = "res:/Audio/"
+                        settings.soundbankLanguage = "English(US)"
+                        try:
+                            settings.spatialAudioEnabled = False
+                        except Exception:
+                            pass
+                        try:
+                            self.audio_manager.UpdateSettings(settings)
+                        except Exception:
+                            pass
+                        try:
+                            self.audio_manager.Enable(default_banks)
+                            self.wait_for_audio_banks(["Init.bnk", "Common.bnk"], 2.0)
+                        except Exception:
+                            self.load_audio_banks(default_banks)
+            try:
+                if hasattr(self.audio_manager, "DisableAudioCulling"):
+                    self.audio_manager.DisableAudioCulling()
+            except Exception:
+                pass
+            self.apply_audio_runtime_settings()
+            if self.ui_audio_player is None and hasattr(audio2, "GetUIPlayer"):
                 try:
                     self.ui_audio_player = audio2.GetUIPlayer()
                 except Exception:
                     self.ui_audio_player = None
+            if self.music_audio_player is None and hasattr(audio2, "GetMusicPlayer"):
+                try:
+                    self.music_audio_player = audio2.GetMusicPlayer()
+                except Exception:
+                    self.music_audio_player = None
             if hasattr(audio2, "AudEmitter"):
                 try:
                     self.audio_emitter = audio2.AudEmitter("elysian_jessica_preview")
@@ -1988,6 +2552,112 @@ class LiveTrinityViewer(object):
             self.audio_last_error = traceback.format_exc()
             print("[live] audio init failed:\n%s" % self.audio_last_error, file=sys.stderr)
             return False
+
+    def apply_audio_runtime_settings(self):
+        if self.audio_manager is None:
+            return
+        for name, value in (
+            ("volume_master", 1.0),
+            ("volume_ui", 1.0),
+            ("volume_world", 1.0),
+            ("volume_voice", 1.0),
+            ("volume_music", 1.0),
+            ("turret_muffler", 1.0),
+            ("advanced_settings_atmosphere", 1.0),
+            ("advanced_settings_jump_activations", 1.0),
+            ("advanced_settings_secondary_interfaces", 1.0),
+            ("advanced_settings_ship_effects", 1.0),
+            ("advanced_settings_ship_sounds", 1.0),
+            ("advanced_settings_turrets", 1.0),
+            ("advanced_settings_warning_sfx", 1.0),
+            ("advanced_settings_uiclick", 1.0),
+            ("engine_voice_limit", 200.0),
+        ):
+            try:
+                self.audio_manager.SetGlobalRTPC(name, float(value))
+            except Exception:
+                pass
+        for state_group, state_name in (
+            ("in_hangar", "no"),
+            ("video_overlay", "off"),
+        ):
+            try:
+                self.audio_manager.SetState(unicode(state_group), unicode(state_name))
+            except Exception:
+                pass
+
+    def tick_audio_runtime(self):
+        if self.audio_manager is None:
+            return
+        for method_name in ("Update", "Tick", "Pump"):
+            try:
+                method = getattr(self.audio_manager, method_name)
+            except Exception:
+                continue
+            try:
+                method()
+            except TypeError:
+                try:
+                    method(0.0)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            return
+
+    def warm_audio_runtime(self, banks=None, max_seconds=6.0):
+        if not self.initialize_audio_runtime():
+            if self.audio_last_error:
+                print("[live] audio warmup failed:\n%s" % self.audio_last_error, file=sys.stderr)
+            return False
+        banks = self.normalize_audio_banks(banks or [])
+        loaded = True
+        if banks:
+            loaded = self.load_audio_banks(banks)
+        self.apply_audio_runtime_settings()
+        self.attach_audio_emitter_to_model()
+        deadline = time.time() + min(0.35, max(0.05, float(max_seconds) * 0.08))
+        while time.time() < deadline:
+            try:
+                if self.blue is not None:
+                    self.blue.os.Pump()
+                if self.device is not None:
+                    self.device.Render()
+                self.tick_audio_runtime()
+            except Exception:
+                pass
+            time.sleep(0.01)
+        return bool(loaded)
+
+    def ensure_weapon_audio_runtime(self):
+        if not self.weapon_audio_enabled:
+            return False
+        required_banks = [
+            "Common.bnk",
+            "Turrets.bnk",
+            "Effects.bnk",
+            "ShipEffects.bnk",
+            "ShipAnimations.bnk",
+            "Modules.bnk",
+        ]
+        loaded = self.get_loaded_audio_bank_names()
+        if self.weapon_audio_ready and all(bank.lower() in loaded for bank in required_banks):
+            return True
+        self.weapon_audio_ready = self.warm_audio_runtime(required_banks, 8.0)
+        return self.weapon_audio_ready
+
+    def pump_audio_after_event(self, seconds=0.45):
+        deadline = time.time() + max(0.05, min(2.0, float(seconds)))
+        while time.time() < deadline:
+            try:
+                if self.blue is not None:
+                    self.blue.os.Pump()
+                if self.device is not None:
+                    self.device.Render()
+                self.tick_audio_runtime()
+            except Exception:
+                pass
+            time.sleep(0.01)
 
     def attach_audio_emitter_to_model(self):
         if self.space_object is None or self.audio_emitter is None or self.blue is None:
@@ -2006,57 +2676,309 @@ class LiveTrinityViewer(object):
         except Exception:
             return False
 
+    def update_audio_listener(self, eye=None, focus=None):
+        if self.audio2 is None:
+            return False
+        try:
+            if self.audio_listener is None and hasattr(self.audio2, "GetListener"):
+                self.audio_listener = self.audio2.GetListener()
+        except Exception:
+            self.audio_listener = None
+        listener = self.audio_listener
+        if listener is None:
+            return False
+        if eye is None:
+            eye = (
+                self.model_center[0],
+                self.model_center[1],
+                self.model_center[2] + max(1.0, float(self.radius or self.model_radius or 1.0)),
+            )
+        if focus is None:
+            focus = tuple(self.model_center)
+        forward = (
+            focus[0] - eye[0],
+            focus[1] - eye[1],
+            focus[2] - eye[2],
+        )
+        for method_name, args in (
+            ("SetPosition", (eye,)),
+            ("SetOrientation", (forward, (0.0, 1.0, 0.0))),
+            ("SetTransform", (eye, forward, (0.0, 1.0, 0.0))),
+        ):
+            try:
+                getattr(listener, method_name)(*args)
+            except Exception:
+                pass
+        return True
+
+    def is_2d_audio_event(self, event_name, event=None, banks=None):
+        event = event or self.get_audio_event(event_name) or {}
+        if event.get("is2D"):
+            return True
+        metadata_event = (
+            self.get_audio_metadata().get("Events", {}) or {}
+        ).get(event_name) or {}
+        if metadata_event.get("is2D"):
+            return True
+        normalized_banks = set(native_text(bank).lower() for bank in (banks or event.get("banks") or []))
+        return "interface.bnk" in normalized_banks
+
     def send_audio_event(self, event_name):
         event_name = native_text(event_name)
         if not event_name:
             return False
-        if not self.initialize_audio_runtime():
+        event_name = self.resolve_direct_audio_event_name(event_name)
+        if not event_name:
             return False
+        if not self.initialize_audio_runtime():
+            if self.audio_last_error:
+                print("[live] audio unavailable for event %s:\n%s" % (event_name, self.audio_last_error), file=sys.stderr)
+            return False
+        event = self.get_audio_event(event_name) or {}
+        banks = event.get("banks") or []
+        if not banks:
+            metadata_event = (
+                self.get_audio_metadata().get("Events", {}) or {}
+            ).get(event_name) or {}
+            banks = metadata_event.get("soundbanks") or []
+        if banks:
+            self.load_audio_banks(banks)
         self.attach_audio_emitter_to_model()
+        self.update_audio_listener()
         sent = False
-        for player in (self.ui_audio_player, self.audio_emitter):
+        bank_names = [native_text(bank).lower() for bank in (banks or [])]
+        if event.get("category") == "Music" or "music.bnk" in bank_names or "music_essential.bnk" in bank_names:
+            players = (self.music_audio_player, self.ui_audio_player, self.audio_emitter)
+        elif self.is_2d_audio_event(event_name, event, banks):
+            players = (self.ui_audio_player, self.audio_emitter)
+        else:
+            players = (self.audio_emitter, self.ui_audio_player)
+        for player in players:
             if player is None:
                 continue
             try:
-                player.SendEvent(unicode(event_name))
-                sent = True
+                playing_id = player.SendEvent(unicode(event_name))
+                sent = playing_id is None or int(playing_id or 0) != 0
+                print("[live] audio send player=%s event=%s id=%s" % (
+                    type(player).__name__,
+                    event_name,
+                    playing_id,
+                ), file=sys.stderr)
                 break
             except Exception:
                 try:
-                    player.SendEvent(event_name)
-                    sent = True
+                    playing_id = player.SendEvent(event_name)
+                    sent = playing_id is None or int(playing_id or 0) != 0
+                    print("[live] audio send player=%s event=%s id=%s" % (
+                        type(player).__name__,
+                        event_name,
+                        playing_id,
+                    ), file=sys.stderr)
                     break
                 except Exception:
                     pass
         if not sent and self.audio_manager is not None:
             for method_name in ("PostEvent", "SendEvent"):
                 try:
-                    getattr(self.audio_manager, method_name)(event_name)
-                    sent = True
+                    playing_id = getattr(self.audio_manager, method_name)(event_name)
+                    sent = playing_id is None or int(playing_id or 0) != 0
                     break
                 except Exception:
                     pass
         if sent:
+            self.pump_audio_after_event()
+        else:
             try:
-                if self.blue is not None:
-                    self.blue.os.Pump()
+                loaded = sorted(self.get_loaded_audio_bank_names())
             except Exception:
-                pass
+                loaded = []
+            print("[live] audio event failed event=%s banks=%s loaded=%s" % (
+                event_name,
+                banks,
+                ",".join(loaded[:24]),
+            ), file=sys.stderr)
         return sent
+
+    def resolve_direct_audio_event_name(self, event_name):
+        event_name = native_text(event_name)
+        if not event_name:
+            return ""
+        event = self.get_audio_event(event_name) or {"event": event_name}
+        if self.is_direct_audio_preview_safe(event_name, event):
+            return event_name
+        fallback = self.resolve_audio_preview_fallback(event)
+        if fallback and fallback != event_name:
+            return fallback
+        return event_name
 
     def play_selected_sound(self):
         selected = self.get_combo_selection(IDC_SOUND_LIST)
-        if not (0 <= selected < len(self.audio_events)):
+        if not (0 <= selected < len(self.audio_preview_events)):
             return
         self.selected_audio_index = selected
-        event = self.audio_events[selected]
+        event = self.audio_preview_events[selected]
         sent = self.send_audio_event(event.get("event"))
+        if not sent:
+            fallback = self.resolve_audio_preview_fallback(event)
+            if fallback and fallback != event.get("event"):
+                sent = self.send_audio_event(fallback)
         print("[live] sound sent=%s event=%s label=%s" % (
             sent,
             event.get("event"),
             event.get("label"),
         ), file=sys.stderr)
         self.update_title(force=True)
+
+    def resolve_audio_preview_fallback(self, event):
+        category = native_text((event or {}).get("category") or "").lower()
+        name = native_text((event or {}).get("event") or "").lower()
+        if category == "weapons" or "turret" in name or "outburst" in name:
+            return self.first_existing_audio_event([
+                "ship_impact_mh1_play",
+                "missile_outburst_light_play",
+                "missile_explosion_em_medium_play",
+            ])
+        if category == "boosters" or "booster" in name or "microwarpdrive" in name:
+            return self.first_existing_audio_event([
+                "microwarpdrive_t_play",
+                "ship_engine_M_booster_1st_on",
+                "afterburner_c_play",
+            ])
+        if category == "explosions" or "explos" in name or name.startswith("ecx_"):
+            return self.first_existing_audio_event([
+                "ecx_generic_explosive_long_global_01b_play",
+                "missile_explosion_em_medium_play",
+            ])
+        if category == "gate" or "gate" in name:
+            return self.first_existing_audio_event([
+                "worldobject_jumpgate_atmo_play",
+            ])
+        return None
+
+    def audio_event_exists(self, event_name):
+        return native_text(event_name).lower() in self.audio_events_by_name
+
+    def first_existing_audio_event(self, candidates):
+        for event_name in candidates:
+            if self.audio_event_exists(event_name):
+                return event_name
+        return None
+
+    def weapon_size_audio_token(self):
+        size = native_text((self.armed_weapon or {}).get("size") or "").lower()
+        if size in ("small", "s"):
+            return ["Small", "small", "S"]
+        if size in ("medium", "m"):
+            return ["M", "medium"]
+        if size in ("large", "l"):
+            return ["Large", "large", "L"]
+        if size in ("xlarge", "xl", "extra large"):
+            return ["XL", "xl", "xlarge"]
+        return ["Small", "small", "M", "Large"]
+
+    def weapon_turret_audio_prefix(self):
+        size = native_text((self.armed_weapon or {}).get("size") or "").lower()
+        if size in ("medium", "m"):
+            return "m"
+        if size in ("large", "l", "xlarge", "xl", "extra large"):
+            return "h"
+        return "s"
+
+    def resolve_weapon_fire_audio_event(self):
+        weapon = self.armed_weapon or {}
+        if weapon.get("kind") == "launcher":
+            variant = native_text(weapon.get("variant") or weapon.get("groupName") or "").lower()
+            if "rocket" in variant:
+                return self.first_existing_audio_event([
+                    "missile_outburst_rocket_play",
+                    "missile_outburst_light_play",
+                    "ship_effect_missile_launch_play",
+                ])
+            if "torpedo" in variant:
+                return self.first_existing_audio_event([
+                    "missile_outburst_torpedo_play",
+                    "missile_outburst_heavy_play",
+                    "ship_effect_missile_launch_play",
+                ])
+            if "heavy" in variant:
+                return self.first_existing_audio_event([
+                    "missile_outburst_heavy_play",
+                    "missile_outburst_heavy_rapid1_play",
+                    "ship_effect_missile_launch_play",
+                ])
+            if "cruise" in variant:
+                return self.first_existing_audio_event([
+                    "missile_outburst_cruise_play",
+                    "missile_outburst_heavy_play",
+                    "ship_effect_missile_launch_play",
+                ])
+            return self.first_existing_audio_event([
+                "missile_outburst_light_play",
+                "missile_outburst_rocket_play",
+                "missile_outburst_heavy_play",
+                "ship_effect_missile_launch_play",
+            ])
+        impact_event = self.resolve_weapon_impact_audio_event()
+        if impact_event:
+            return impact_event
+        return self.first_existing_audio_event([
+            "ship_impact_mh1_play",
+            "ship_impact_he1_play",
+            "missile_explosion_em_medium_play",
+        ])
+
+    def resolve_weapon_impact_audio_event(self, impact_path=None):
+        text = native_text(impact_path or "").lower()
+        if "mjolnir" in text or "em" in text:
+            preferred = "missile_explosion_em_medium_play"
+        elif "nova" in text or "explosive" in text:
+            preferred = "missile_explosion_explosive_small_play"
+        elif "scourge" in text or "kinetic" in text:
+            preferred = "missile_explosion_kinetic_small_play"
+        elif "inferno" in text or "heat" in text:
+            preferred = "missile_explosion_heat_medium_play"
+        else:
+            preferred = "ship_impact_mh1_play"
+        return self.first_existing_audio_event([
+            preferred,
+            "missile_explosion_em_medium_play",
+            "ship_impact_mh1_play",
+            "ship_impact_he1_play",
+        ])
+
+    def resolve_booster_audio_event(self):
+        sof = (self.current_asset or {}).get("sof") or {}
+        race = native_text(sof.get("race") or "generic").lower()
+        if race not in ("amarr", "caldari", "gallente", "minmatar", "triglavian", "sleeper", "jove", "ore", "soct", "sansha", "angel", "mordu", "drifter"):
+            race = "generic"
+        size_hint = self.current_ship_size_hint()
+        if size_hint == "xlarge":
+            size_tokens = ["dr", "t", "bs"]
+        elif size_hint == "large":
+            size_tokens = ["bs", "c", "dr"]
+        elif size_hint == "medium":
+            size_tokens = ["c", "f"]
+        else:
+            size_tokens = ["f", "d"]
+        candidates = []
+        candidates.extend([
+            "microwarpdrive_t_play",
+            "microwarpdrive_bs_play",
+            "ship_engine_M_booster_1st_on",
+            "ship_engine_S_booster_3rd_on",
+            "afterburner_c_play",
+        ])
+        for size in size_tokens:
+            candidates.extend([
+                "ship_booster_%s_%s_play" % (race, size),
+                "ship_booster_%s_%s_doppler_play" % (race, size),
+            ])
+        candidates.extend([
+            "ship_booster_drifter_bs_play",
+            "ship_engine_M_booster_1st_on",
+            "ship_engine_S_booster_3rd_on",
+        ])
+        return self.first_existing_audio_event(candidates)
 
     def get_resource_queue_depth(self):
         pending = 0
@@ -2204,6 +3126,7 @@ class LiveTrinityViewer(object):
         if self.audio_ready:
             self.attach_audio_emitter_to_model()
         self.apply_booster_state(rebuild=True)
+        self.apply_damage_preview()
         self.pump_resource_loads("space object")
         self.model_radius = float(space_object.GetBoundingSphereRadius())
         self.model_center = tuple(space_object.GetBoundingSphereCenter())
@@ -2576,6 +3499,7 @@ class LiveTrinityViewer(object):
                 observer.observer = None
             except Exception:
                 pass
+        self.strip_preview_resource_audio(missile)
         warheads = getattr(missile, "warheads", None)
         if warheads:
             try:
@@ -2754,43 +3678,92 @@ class LiveTrinityViewer(object):
     def assign_turret_target(self, turret_set, target):
         if turret_set is None or target is None:
             return
+        target_object_assigned = False
         try:
             turret_set.targetObject = target
+            target_object_assigned = True
         except Exception:
-            pass
+            target_object_assigned = False
         for attr_name in ("targetPosition", "position"):
             try:
                 if hasattr(turret_set, attr_name):
                     setattr(turret_set, attr_name, self.dummy_target_position)
             except Exception:
                 pass
+        if target_object_assigned:
+            return
+        try:
+            target_data = getattr(turret_set, "target", None)
+            if target_data is not None and hasattr(target_data, "targetPosition"):
+                target_data.targetPosition = self.dummy_target_position
+        except Exception:
+            pass
+
+    def strip_preview_resource_audio(self, obj):
+        if obj is None:
+            return
+        try:
+            for observer in list(getattr(obj, "observers", []) or []):
+                try:
+                    observer.observer = None
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        for type_name in (
+            "audio2.AudEventCurve",
+            "trinity.Tr2ActionPlaySound",
+            "audio2.AudEmitter",
+            "trinity.TriObserverLocal",
+        ):
+            try:
+                matches = obj.Find(type_name)
+            except Exception:
+                matches = []
+            for entry in list(matches or []):
+                for attr_name, value in (
+                    ("audioEmitter", None),
+                    ("observer", None),
+                    ("eventName", ""),
+                    ("soundEvent", ""),
+                    ("soundName", ""),
+                    ("event", ""),
+                    ("enabled", False),
+                    ("display", False),
+                ):
+                    try:
+                        if hasattr(entry, attr_name):
+                            setattr(entry, attr_name, value)
+                    except Exception:
+                        pass
 
     def configure_turret_firing_effect(self, turret_set, target):
         effect_path = native_text(getattr(turret_set, "firingEffectResPath", "") or "")
         if not effect_path:
             return False
-        effect, resolved_path = self.load_authored_object(
+        effect_template, resolved_path = self.load_authored_object(
             effect_path,
             "turret firing effect",
             diagnostics=False,
         )
-        if effect is None:
+        if effect_template is None:
             print("[live] failed firing effect %s" % resolved_path, file=sys.stderr)
+            return False
+        try:
+            effect = self.copy_blue_object(
+                "%s:jessicaTurretFiringFX" % resolved_path,
+                effect_template,
+                "turret firing effect",
+            )
+        except Exception:
+            effect = effect_template
+        if effect is None:
             return False
         try:
             turret_set.firingEffect = effect
         except Exception:
             return False
-        for stretch in list(getattr(effect, "stretch", []) or []):
-            for attr_name, value in (
-                ("sourceSpaceObject", self.space_object),
-                ("destSpaceObject", target),
-            ):
-                try:
-                    if hasattr(stretch, attr_name):
-                        setattr(stretch, attr_name, value)
-                except Exception:
-                    pass
+        self.safe_call(effect, "StartControllers")
         return True
 
     def get_preview_flight_seconds(self):
@@ -2910,6 +3883,9 @@ class LiveTrinityViewer(object):
     def spawn_weapon_impact(self, impact_path):
         if not impact_path:
             return
+        impact_event = self.resolve_weapon_impact_audio_event(impact_path)
+        if impact_event:
+            self.send_audio_event(impact_event)
         template = self.impact_templates.get(impact_path)
         if template is None:
             template, _resolved_path = self.load_authored_object(
@@ -2927,6 +3903,7 @@ class LiveTrinityViewer(object):
                     template,
                     "missile impact",
                 )
+                self.strip_preview_resource_audio(impact)
             except Exception:
                 weapon_trace("impact copy failed %s" % traceback.format_exc())
         if impact is None:
@@ -2985,6 +3962,7 @@ class LiveTrinityViewer(object):
             self.refresh_action_buttons()
             print("[live] selected asset has no turret locators", file=sys.stderr)
             return
+        audio_ready = False
         self.clear_preview_weapons()
         weapon = self.select_preview_weapon()
         if not weapon:
@@ -3027,8 +4005,6 @@ class LiveTrinityViewer(object):
                 turret_set.slotNumber = slot_number
             except Exception:
                 pass
-            self.assign_turret_target(turret_set, target)
-            self.configure_turret_firing_effect(turret_set, target)
             try:
                 self.get_sof_factory().SetupTurretMaterialFromDNA(turret_set, self.dna)
             except Exception:
@@ -3045,8 +4021,10 @@ class LiveTrinityViewer(object):
             mounted += 1
         if hasattr(self.space_object, "RebuildTurretPositions"):
             self.safe_call(self.space_object, "RebuildTurretPositions")
+        self.pump_resource_loads("weapon hardpoints", 0.75)
         for turret_set in self.armed_turret_sets:
-            self.safe_call(turret_set, "StartControllers")
+            self.assign_turret_target(turret_set, target)
+            self.configure_turret_firing_effect(turret_set, target)
             self.safe_call(turret_set, "EnterStateIdle")
         self.armed_weapon = weapon
         self.pump_resource_loads("weapon preview", 1.5)
@@ -3058,22 +4036,30 @@ class LiveTrinityViewer(object):
             weapon.get("name"),
             weapon.get("resourcePath"),
         ), file=sys.stderr)
+        if not audio_ready:
+            print("[live] weapon audio unavailable; firing visuals remain enabled", file=sys.stderr)
 
     def fire_preview_weapons_once(self):
         target = self.ensure_dummy_target()
         if target is None:
             return
+        audio_ready = self.ensure_weapon_audio_runtime()
+        fired_any = False
         for turret_set in list(self.armed_turret_sets):
             self.assign_turret_target(turret_set, target)
-            self.safe_call(turret_set, "StartControllers")
             if not self.safe_call(turret_set, "EnterStateFiring"):
                 self.safe_call(turret_set, "ForceStateTargeting")
                 self.safe_call(turret_set, "EnterStateFiring")
+            fired_any = True
             if (
                 self.armed_weapon and
                 self.armed_weapon.get("kind") == "launcher"
             ):
                 self.spawn_authored_missile(turret_set, target)
+        if fired_any and audio_ready:
+            fire_event = self.resolve_weapon_fire_audio_event()
+            if fire_event:
+                self.send_audio_event(fire_event)
 
     def start_dummy_fire(self):
         if not self.armed_turret_sets:
@@ -3312,6 +4298,63 @@ class LiveTrinityViewer(object):
         except Exception:
             return []
 
+    def apply_curve_speed(self, obj, speed):
+        if obj is None:
+            return 0
+        speed = max(0.1, min(4.0, float(speed or 1.0)))
+        changed = 0
+        seen = set()
+        curve_sets = []
+        if hasattr(obj, "Find"):
+            try:
+                curve_sets.extend(list(obj.Find("trinity.TriCurveSet") or []))
+            except Exception:
+                pass
+        for child in self.iter_known_children(obj):
+            try:
+                curve_sets.extend(list(getattr(child, "curveSets", []) or []))
+            except Exception:
+                pass
+            try:
+                if "CurveSet" in type(child).__name__:
+                    curve_sets.append(child)
+            except Exception:
+                pass
+        for curve_set in curve_sets:
+            try:
+                marker = id(curve_set)
+            except Exception:
+                marker = None
+            if marker is not None and marker in seen:
+                continue
+            if marker is not None:
+                seen.add(marker)
+            try:
+                if hasattr(curve_set, "scale"):
+                    curve_set.scale = speed
+                    changed += 1
+            except Exception:
+                pass
+        return changed
+
+    def scale_explosion_child_timing(self, explosion_children, speed):
+        speed = max(0.1, min(4.0, float(speed or 1.0)))
+        if abs(speed - 1.0) < 0.001:
+            return
+        for child in explosion_children:
+            for attr_name in (
+                "globalExplosionTime",
+                "totalDuration",
+                "wreckSwitchOffsetFromGlobalStart",
+            ):
+                try:
+                    if hasattr(child, attr_name):
+                        value = float(getattr(child, attr_name) or 0.0)
+                        if value > 0.0:
+                            setattr(child, attr_name, value / speed)
+                except Exception:
+                    pass
+
     def configure_child_explosions(self, explosion_model, explosion):
         geo2 = self.geo2
 
@@ -3382,7 +4425,44 @@ class LiveTrinityViewer(object):
                 child.SetLocalExplosionTransforms(transforms)
             if hasattr(child, "SetGlobalExplosionOffset"):
                 child.SetGlobalExplosionOffset(global_explosion_offset)
+        self.scale_explosion_audio_emitters(explosion_model, local_scale, global_scale)
         return explosion_children
+
+    def scale_explosion_audio_emitters(self, explosion_model, local_scale, global_scale):
+        if explosion_model is None:
+            return
+        local_explosions = []
+        global_explosions = []
+        for child in list(getattr(explosion_model, "effectChildren", []) or []):
+            for attr_name, destination in (
+                ("localExplosion", local_explosions),
+                ("globalExplosion", global_explosions),
+            ):
+                try:
+                    value = getattr(child, attr_name, None)
+                    if value is not None:
+                        destination.append(value)
+                except Exception:
+                    pass
+            try:
+                local_explosions.extend(list(getattr(child, "localExplosions", []) or []))
+            except Exception:
+                pass
+        for explosion_list, scaling in (
+            (local_explosions, local_scale),
+            (global_explosions, global_scale),
+        ):
+            for explosion in explosion_list:
+                try:
+                    curves = explosion.Find("audio2.AudEventCurve")
+                except Exception:
+                    curves = []
+                for curve in curves or []:
+                    try:
+                        if getattr(curve, "audioEmitter", None):
+                            curve.audioEmitter.SetAttenuationScalingFactor(float(scaling))
+                    except Exception:
+                        pass
 
     def play_explosion(self):
         options = self.current_explosion_options()
@@ -3418,16 +4498,25 @@ class LiveTrinityViewer(object):
             if hasattr(model, "scaling"):
                 model.scaling = (scale, scale, scale)
             child_explosions = self.configure_child_explosions(model, explosion)
+            self.apply_curve_speed(model, self.explosion_speed)
+            self.scale_explosion_child_timing(child_explosions, self.explosion_speed)
             self.scene.objects.append(model)
-            duration = 8.0
-            if hasattr(model, "Start"):
-                model.Start()
-            if hasattr(model, "Play"):
-                model.Play()
+            self.pump_resource_loads("explosion %s" % res_path, 0.35)
+            duration = max(1.0, 8.0 / max(0.1, self.explosion_speed))
             for child in child_explosions:
                 if hasattr(child, "Play"):
                     child.Play()
                 duration = max(duration, float(getattr(child, "totalDuration", 0) or 0))
+            if not child_explosions:
+                for method_name in ("StartControllers", "Start", "Play"):
+                    self.safe_call(model, method_name)
+            explosion_event = self.first_existing_audio_event([
+                "ecx_generic_explosive_long_global_01b_play",
+                "ecx_generic_explosive_long_individual_01b_play",
+                "missile_explosion_em_large_play",
+            ])
+            if explosion_event:
+                self.send_audio_event(explosion_event)
             global_explosion_start = max([
                 float(getattr(child, "globalExplosionTime", 0) or 0)
                 for child in child_explosions
@@ -3443,7 +4532,7 @@ class LiveTrinityViewer(object):
                     wreck_switch_delay,
                 )
             self.explosion_models.append(model)
-            self.explosion_until = max(self.explosion_until, time.time() + min(18.0, duration + 1.0))
+            self.explosion_until = max(self.explosion_until, time.time() + min(90.0, duration + 1.0))
             print("[live] explosion %s" % res_path, file=sys.stderr)
             self.update_title(force=True)
         except Exception:
@@ -3496,6 +4585,7 @@ class LiveTrinityViewer(object):
                 0.32,
                 math.cos(self.yaw),
             )
+        self.update_audio_listener(eye, focus)
 
     def apply_booster_state(self, rebuild=False):
         if not self.space_object or not hasattr(self.space_object, "boosters"):
@@ -3512,10 +4602,58 @@ class LiveTrinityViewer(object):
             self.space_object.RebuildBoosterSet()
         return True
 
+    def set_controller_variable(self, name, value):
+        if self.space_object is None or not hasattr(self.space_object, "SetControllerVariable"):
+            return False
+        try:
+            self.space_object.SetControllerVariable(native_text(name), float(value))
+            return True
+        except Exception:
+            return False
+
+    def apply_damage_preview(self):
+        if self.space_object is None:
+            return False
+        damage = max(0.0, min(1.0, float(self.hull_damage_preview or 0.0)))
+        shield_health = 1.0
+        armor_health = 1.0
+        hull_health = 1.0 - damage
+        changed = False
+        # This is the same public Trinity hook used by EVE client QA tooling and
+        # skin swaps. The values are remaining health fractions, not damage
+        # fractions: 1.0 is pristine and 0.0 is fully destroyed.
+        if hasattr(self.space_object, "SetImpactDamageState"):
+            try:
+                self.space_object.SetImpactDamageState(
+                    shield_health,
+                    armor_health,
+                    hull_health,
+                    True,
+                )
+                changed = True
+            except Exception:
+                pass
+        changed = self.set_controller_variable("ShieldDamage", shield_health) or changed
+        changed = self.set_controller_variable("ArmorDamage", armor_health) or changed
+        changed = self.set_controller_variable("HullDamage", hull_health) or changed
+        return changed
+
     def toggle_boosters(self):
         self.boosters_enabled = not self.boosters_enabled
         if not self.apply_booster_state(rebuild=True):
             print("[live] no booster controller for type %s" % self.type_id, file=sys.stderr)
+        if self.boosters_enabled:
+            booster_event = self.resolve_booster_audio_event()
+            if booster_event:
+                self.send_audio_event(booster_event)
+        else:
+            self.send_audio_event(
+                self.first_existing_audio_event([
+                    "custom_damp_boosters_off",
+                    "ship_engine_M_booster_1st_stop",
+                    "ship_engine_S_booster_3rd_stop",
+                ]) or ""
+            )
         self.sync_control_text()
         self.update_title(force=True)
 
@@ -4014,7 +5152,7 @@ class LiveTrinityViewer(object):
             else ""
         )
         title = (
-            "Elysian Jessica Live | type %s | %.0f FPS | %s | zoom %.0f%% | light %.2fx%s | %s | "
+            "Elysian Jessica Live | type %s | %.0f FPS | %s | zoom %.0f%% | light %.2fx | rot %.2fx | hull %.0f%%%s | %s | "
             "left orbit, right pan, wheel zoom"
         ) % (
             self.type_id,
@@ -4022,6 +5160,8 @@ class LiveTrinityViewer(object):
             mode,
             self.zoom * 100.0,
             self.light_scale,
+            self.rotation_speed,
+            self.hull_damage_preview * 100.0,
             filter_summary,
             "panel" if self.panel_visible else "clean",
         )
@@ -4079,10 +5219,41 @@ class LiveTrinityViewer(object):
             if isinstance(value, bool):
                 self.boosters_enabled = value
                 self.apply_booster_state(rebuild=True)
+                if value:
+                    booster_event = self.resolve_booster_audio_event()
+                    if booster_event:
+                        self.send_audio_event(booster_event)
+                else:
+                    self.send_audio_event(
+                        self.first_existing_audio_event([
+                            "custom_damp_boosters_off",
+                            "ship_engine_M_booster_1st_stop",
+                            "ship_engine_S_booster_3rd_stop",
+                        ]) or ""
+                    )
                 self.sync_control_text()
                 self.update_title(force=True)
             else:
                 self.toggle_boosters()
+        elif command == "sound":
+            value = native_text(payload.get("value") or "")
+            if value:
+                event_name = value
+                if not self.audio_event_exists(event_name):
+                    for candidate in self.audio_preview_events:
+                        if value.lower() in native_text(candidate.get("label")).lower():
+                            event_name = candidate.get("event")
+                            break
+                sent = self.send_audio_event(event_name)
+                if not sent:
+                    event = self.get_audio_event(event_name) or {}
+                    fallback = self.resolve_audio_preview_fallback(event)
+                    if fallback and fallback != event_name:
+                        sent = self.send_audio_event(fallback)
+                print("[live] command sound sent=%s event=%s" % (
+                    sent,
+                    event_name,
+                ), file=sys.stderr)
         elif command == "nebula":
             self.cycle_scene()
         elif command == "mode":
@@ -4114,6 +5285,22 @@ class LiveTrinityViewer(object):
                 self.toggle_after_effects()
         elif command == "light":
             self.adjust_light(float(payload.get("delta") or 0.25))
+        elif command == "rotationspeed":
+            self.rotation_speed = max(0.0, min(3.0, float(payload.get("value") or 1.0)))
+            self.configure_slider(IDC_ROTATION_SPEED, 0, 300, int(self.rotation_speed * 100), 50)
+            self.sync_control_text()
+            self.update_title(force=True)
+        elif command == "explosionspeed":
+            self.explosion_speed = max(0.1, min(4.0, float(payload.get("value") or 1.0)))
+            self.configure_slider(IDC_EXPLOSION_SPEED, 10, 400, int(self.explosion_speed * 100), 50)
+            self.sync_control_text()
+            self.update_title(force=True)
+        elif command == "hulldamage":
+            self.hull_damage_preview = max(0.0, min(1.0, float(payload.get("value") or 0.0)))
+            self.configure_slider(IDC_HULL_DAMAGE, 0, 100, int(self.hull_damage_preview * 100), 10)
+            self.apply_damage_preview()
+            self.sync_control_text()
+            self.update_title(force=True)
         elif command == "quality":
             self.set_ultra_quality()
         elif command == "next":
@@ -4148,7 +5335,7 @@ class LiveTrinityViewer(object):
         self.poll_external_commands()
         self.poll_search_text()
         if not self.paused:
-            self.yaw += 0.0026
+            self.yaw += 0.0026 * self.rotation_speed
         if self.firing_dummy and now >= self.next_dummy_fire_at:
             self.fire_preview_weapons_once()
             self.next_dummy_fire_at = now + self.weapon_cycle_seconds
@@ -4167,6 +5354,7 @@ class LiveTrinityViewer(object):
         self.update_camera()
         self.device.Render()
         self.blue.os.Pump()
+        self.tick_audio_runtime()
         self.frame_count += 1
         self.fps_window_frames += 1
         elapsed = now - self.fps_window_at
@@ -4236,6 +5424,14 @@ def window_proc(hwnd, message, wparam, lparam):
         else:
             viewer.resize()
         return 0
+    if message == WM_HSCROLL:
+        if is_panel:
+            handled = viewer.handle_slider_changed(lparam)
+            if handled is not None:
+                return handled
+    if message in (WM_CTLCOLORSTATIC, WM_CTLCOLORBTN, WM_CTLCOLORLISTBOX, WM_CTLCOLOREDIT):
+        if is_panel:
+            return viewer.handle_control_color(message, wparam, lparam)
     if message == WM_COMMAND:
         handled = viewer.handle_command(wparam)
         if handled is not None:
