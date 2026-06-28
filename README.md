@@ -4,8 +4,8 @@
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/latest">
     <img alt="Latest release" src="https://img.shields.io/github/v/release/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=00c2ff">
   </a>
-  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.3.3/ElysianJessica-v0.3.3.zip">
-    <img alt="Download v0.3.3" src="https://img.shields.io/badge/download-v0.3.3-7c3aed?style=for-the-badge&logo=github&logoColor=white">
+  <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/releases/download/v0.4.0/ElysianJessica-v0.4.0.zip">
+    <img alt="Download v0.4.0" src="https://img.shields.io/badge/download-v0.4.0-7c3aed?style=for-the-badge&logo=github&logoColor=white">
   </a>
   <a href="https://github.com/JohnElysian/Eve-Online-Trinity-Viewer/blob/main/LICENSE">
     <img alt="License" src="https://img.shields.io/github/license/JohnElysian/Eve-Online-Trinity-Viewer?style=for-the-badge&color=22c55e">
@@ -42,12 +42,13 @@ it reads them from your local EVE installation.
 - SKIN material previews for supported ships.
 - Exposed model animation, curve, controller, and event entries where a model
   publishes them through Trinity.
-- Native audio event previews for warp, gate, booster, explosion, and other
-  shipped sound events.
 - Real turret and launcher hardpoint mounting.
 - Dummy target preview with firing cycles.
 - Native projectile, beam, missile-trail, impact, booster, explosion, and
-  attached audio paths where the client asset supports them.
+  impact visual paths where the client asset supports them.
+- Charge/ammo selection for compatible weapons, using shipped dogma charge
+  groups, charge sizes, missile resources, and authored ammo colours.
+- Model yaw, pitch, and roll controls for cinematic inspection angles.
 - Close-up camera controls for inspecting tiny and huge models.
 - Automatic local runtime catalogue setup. Normal users do not need Elysian Eve,
   ClientSDE, Node.js, or any data-sync knowledge.
@@ -197,8 +198,8 @@ Inside the floating panel:
 - **Animation** lists playable authored animations, events, and curves Jessica
   can discover.
 - **Weapon** selects turret or launcher families.
-- **Sound preview** plays curated client audio events through the native
-  `_audio2` runtime.
+- **Charge** appears beneath Weapon after arming and selects the compatible
+  ammunition, crystal, or missile payload used by the preview.
 - **Arm Max** mounts weapons on available turret hardpoints.
 - **Fire Dummy** spawns a target and cycles fire until stopped.
 - **Explode** plays the authored explosion resource when one is available.
@@ -208,7 +209,7 @@ Inside the floating panel:
 
 The source repository does not include EVE assets. It does include a compressed
 metadata catalogue for convenience; it contains viewer metadata, SKIN material
-choices, audio event names, and resource paths, not EVE models, textures,
+choices, weapon charge mappings, and resource paths, not EVE models, textures,
 audio, binaries, or `ResFiles`.
 
 If `runtime/catalog.json` is missing, corrupt, or contains no SOF assets,

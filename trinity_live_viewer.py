@@ -172,9 +172,14 @@ IDC_RESET_CAMERA = 1033
 IDC_SKIN_LIST = 1034
 IDC_SOUND_LIST = 1035
 IDC_PLAY_SOUND = 1036
+IDC_WEAPON_SEARCH = 1037
 IDC_ROTATION_SPEED = 1040
 IDC_EXPLOSION_SPEED = 1041
 IDC_HULL_DAMAGE = 1042
+IDC_CHARGE_LIST = 1043
+IDC_MODEL_YAW = 1044
+IDC_MODEL_PITCH = 1045
+IDC_MODEL_ROLL = 1046
 IDC_SEARCH_STATUS = 1201
 IDC_ANIMATION_LABEL = 1202
 IDC_WEAPON_LABEL = 1203
@@ -184,6 +189,11 @@ IDC_CINEMATIC_LABEL = 1206
 IDC_ROTATION_SPEED_LABEL = 1207
 IDC_EXPLOSION_SPEED_LABEL = 1208
 IDC_HULL_DAMAGE_LABEL = 1209
+IDC_WEAPON_STATUS = 1210
+IDC_CHARGE_LABEL = 1212
+IDC_MODEL_YAW_LABEL = 1213
+IDC_MODEL_PITCH_LABEL = 1214
+IDC_MODEL_ROLL_LABEL = 1215
 
 FILTER_CONTROLS = (
     (IDC_FILTER_SHIPS, "ships"),
@@ -525,15 +535,19 @@ class LiveTrinityViewer(object):
         self.catalog_index = self.find_catalog_index(self.type_id)
         self.current_asset = self.resolve_current_asset()
         self.weapon_catalog = self.load_weapon_catalog()
-        self.audio_events = self.load_audio_events()
-        self.audio_events_by_name = dict(
-            (native_text(event.get("event")).lower(), event)
-            for event in self.audio_events
-            if event.get("event")
-        )
-        self.audio_preview_events = self.build_audio_preview_events()
+        self.weapon_filter_blobs = self.build_weapon_filter_blobs()
+        self.weapon_search_text = ""
+        self.weapon_search_pending = False
+        self.weapon_search_changed_at = 0.0
+        self.audio_events = []
+        self.audio_events_by_name = {}
+        self.audio_preview_events = []
         self.armed_turret_sets = []
         self.armed_weapon = None
+        self.charge_options = []
+        self.selected_charge_index = -1
+        self.armed_charge = None
+        self.selected_charge_type_by_weapon = {}
         self.selected_weapon_index = -1
         self.skin_options = []
         self.selected_skin_index = 0
@@ -564,6 +578,9 @@ class LiveTrinityViewer(object):
         self.last_mouse = (0, 0)
         self.yaw = 0.0
         self.pitch = 0.22
+        self.model_yaw = 0.0
+        self.model_pitch = 0.0
+        self.model_roll = 0.0
         self.zoom = 1.0
         self.camera_pan = [0.0, 0.0, 0.0]
         self.light_scale = 1.1
@@ -597,10 +614,7 @@ class LiveTrinityViewer(object):
         self.audio_listener = None
         self.audio_ready = False
         self.weapon_audio_ready = False
-        self.weapon_audio_enabled = os.environ.get(
-            "ELYSIAN_JESSICA_WEAPON_AUDIO",
-            "",
-        ).strip() == "1"
+        self.weapon_audio_enabled = False
         self.audio_last_error = ""
         self.audio_loaded_banks = set()
         self.runtime_audio_metadata = None
@@ -804,6 +818,26 @@ class LiveTrinityViewer(object):
             for weapon in weapons or []
             if weapon.get("resourcePath")
         ]
+
+    def build_weapon_filter_blobs(self):
+        blobs = []
+        for weapon in self.weapon_catalog:
+            parts = [
+                weapon.get("name"),
+                weapon.get("variant"),
+                weapon.get("family"),
+                weapon.get("kind"),
+                weapon.get("size"),
+                weapon.get("groupName"),
+                weapon.get("resourcePath"),
+                weapon.get("typeID"),
+            ]
+            for charge in list(weapon.get("chargeOptions") or []):
+                parts.append(charge.get("name"))
+                parts.append(charge.get("groupName"))
+                parts.append(charge.get("typeID"))
+            blobs.append(native_text(" ".join(native_text(part) for part in parts if part)).lower())
+        return blobs
 
     def load_audio_events(self):
         events = self.catalog_payload.get("audioEvents", [])
@@ -1326,6 +1360,8 @@ class LiveTrinityViewer(object):
             24,
         )
         self.create_child("STATIC", "Weapon", 0, IDC_WEAPON_LABEL, 0, 0, 100, 18)
+        self.create_child("STATIC", "", 0, IDC_WEAPON_STATUS, 0, 0, 100, 18)
+        self.create_child("EDIT", "", search_style, IDC_WEAPON_SEARCH, 0, 0, 100, 26)
         self.create_child(
             "COMBOBOX",
             "",
@@ -1336,26 +1372,16 @@ class LiveTrinityViewer(object):
             100,
             280,
         )
-        self.create_child("STATIC", "Sound preview", 0, IDC_SOUND_LABEL, 0, 0, 100, 18)
+        self.create_child("STATIC", "Charge", 0, IDC_CHARGE_LABEL, 0, 0, 100, 18)
         self.create_child(
             "COMBOBOX",
             "",
             CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP,
-            IDC_SOUND_LIST,
+            IDC_CHARGE_LIST,
             0,
             0,
             100,
-            300,
-        )
-        self.create_child(
-            "BUTTON",
-            "Play Sound",
-            BS_PUSHBUTTON | WS_TABSTOP,
-            IDC_PLAY_SOUND,
-            0,
-            0,
-            88,
-            24,
+            240,
         )
         self.create_child("STATIC", "Cinematic Controls", 0, IDC_CINEMATIC_LABEL, 0, 0, 100, 18)
         if self.panel_header_font:
@@ -1398,9 +1424,45 @@ class LiveTrinityViewer(object):
             100,
             28,
         )
+        self.create_child("STATIC", "", 0, IDC_MODEL_YAW_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "msctls_trackbar32",
+            "",
+            TBS_AUTOTICKS | WS_TABSTOP,
+            IDC_MODEL_YAW,
+            0,
+            0,
+            100,
+            28,
+        )
+        self.create_child("STATIC", "", 0, IDC_MODEL_PITCH_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "msctls_trackbar32",
+            "",
+            TBS_AUTOTICKS | WS_TABSTOP,
+            IDC_MODEL_PITCH,
+            0,
+            0,
+            100,
+            28,
+        )
+        self.create_child("STATIC", "", 0, IDC_MODEL_ROLL_LABEL, 0, 0, 100, 18)
+        self.create_child(
+            "msctls_trackbar32",
+            "",
+            TBS_AUTOTICKS | WS_TABSTOP,
+            IDC_MODEL_ROLL,
+            0,
+            0,
+            100,
+            28,
+        )
         self.configure_slider(IDC_ROTATION_SPEED, 0, 300, 100, 50)
         self.configure_slider(IDC_EXPLOSION_SPEED, 10, 400, 100, 50)
         self.configure_slider(IDC_HULL_DAMAGE, 0, 100, 0, 10)
+        self.configure_slider(IDC_MODEL_YAW, 0, 360, 180, 45)
+        self.configure_slider(IDC_MODEL_PITCH, 0, 360, 180, 45)
+        self.configure_slider(IDC_MODEL_ROLL, 0, 360, 180, 45)
         list_style = WS_BORDER | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | WS_TABSTOP
         self.create_child("LISTBOX", "", list_style, IDC_ASSET_LIST, 0, 0, 100, 100)
         self.create_child("BUTTON", "Load Asset", BS_PUSHBUTTON | WS_TABSTOP, IDC_LOAD, 0, 0, 64, 24)
@@ -1420,8 +1482,8 @@ class LiveTrinityViewer(object):
         self.create_child("BUTTON", "Clear Weapons", BS_PUSHBUTTON | WS_TABSTOP, IDC_CLEAR_WEAPONS, 0, 0, 64, 24)
         self.create_child("BUTTON", "Reset Camera", BS_PUSHBUTTON | WS_TABSTOP, IDC_RESET_CAMERA, 0, 0, 64, 24)
         self.populate_skin_list()
-        self.populate_audio_list()
         self.populate_weapon_list()
+        self.populate_charge_list()
         self.populate_catalog_list()
         self.position_controls()
         self.sync_control_text()
@@ -1585,34 +1647,51 @@ class LiveTrinityViewer(object):
         )
         USER32.MoveWindow(self.controls[IDC_WEAPON_LABEL], x, y + 214, 90, 18, True)
         USER32.MoveWindow(
-            self.controls[IDC_WEAPON_LIST],
+            self.controls[IDC_WEAPON_STATUS],
+            x + 92,
+            y + 214,
+            max(80, content_width - 92),
+            18,
+            True,
+        )
+        USER32.MoveWindow(
+            self.controls[IDC_WEAPON_SEARCH],
             x,
             y + 234,
             content_width,
-            280,
-            True,
-        )
-        USER32.MoveWindow(self.controls[IDC_SOUND_LABEL], x, y + 266, 120, 18, True)
-        USER32.MoveWindow(
-            self.controls[IDC_SOUND_LIST],
-            x,
-            y + 286,
-            max(120, content_width - action_button_width - gap),
-            300,
-            True,
-        )
-        USER32.MoveWindow(
-            self.controls[IDC_PLAY_SOUND],
-            x + content_width - action_button_width,
-            y + 286,
-            action_button_width,
             26,
             True,
         )
         USER32.MoveWindow(
+            self.controls[IDC_WEAPON_LIST],
+            x,
+            y + 266,
+            content_width,
+            280,
+            True,
+        )
+        charge_visible = bool(
+            getattr(self, "armed_weapon", None) and
+            getattr(self, "charge_options", [])
+        )
+        charge_y = y + 302
+        USER32.MoveWindow(self.controls[IDC_CHARGE_LABEL], x, charge_y, 120, 18, True)
+        USER32.MoveWindow(
+            self.controls[IDC_CHARGE_LIST],
+            x,
+            charge_y + 20,
+            content_width,
+            240,
+            True,
+        )
+        self.set_control_visible(IDC_CHARGE_LABEL, charge_visible)
+        self.set_control_visible(IDC_CHARGE_LIST, charge_visible)
+        charge_shift = 44 if charge_visible else 0
+        cinematic_y = y + 310 + charge_shift
+        USER32.MoveWindow(
             self.controls[IDC_CINEMATIC_LABEL],
             x,
-            y + 322,
+            cinematic_y,
             content_width,
             22,
             True,
@@ -1621,9 +1700,12 @@ class LiveTrinityViewer(object):
         slider_x = x + slider_label_width
         slider_width = max(140, content_width - slider_label_width)
         slider_rows = (
-            (IDC_ROTATION_SPEED_LABEL, IDC_ROTATION_SPEED, y + 352),
-            (IDC_EXPLOSION_SPEED_LABEL, IDC_EXPLOSION_SPEED, y + 384),
-            (IDC_HULL_DAMAGE_LABEL, IDC_HULL_DAMAGE, y + 416),
+            (IDC_ROTATION_SPEED_LABEL, IDC_ROTATION_SPEED, cinematic_y + 30),
+            (IDC_EXPLOSION_SPEED_LABEL, IDC_EXPLOSION_SPEED, cinematic_y + 62),
+            (IDC_HULL_DAMAGE_LABEL, IDC_HULL_DAMAGE, cinematic_y + 94),
+            (IDC_MODEL_YAW_LABEL, IDC_MODEL_YAW, cinematic_y + 126),
+            (IDC_MODEL_PITCH_LABEL, IDC_MODEL_PITCH, cinematic_y + 158),
+            (IDC_MODEL_ROLL_LABEL, IDC_MODEL_ROLL, cinematic_y + 190),
         )
         for label_id, slider_id, row_y in slider_rows:
             USER32.MoveWindow(
@@ -1656,9 +1738,9 @@ class LiveTrinityViewer(object):
         USER32.MoveWindow(
             self.controls[IDC_ASSET_LIST],
             x,
-            y + 456,
+            y + 552 + charge_shift,
             content_width,
-            max(90, button_y - (y + 464)),
+            max(90, button_y - (y + 560 + charge_shift)),
             True,
         )
         button_w = max(72, int((content_width - (gap * 2)) / 3))
@@ -1793,21 +1875,150 @@ class LiveTrinityViewer(object):
             weapon.get("name") or weapon.get("typeID"),
         )
 
+    def charge_display_label(self, charge):
+        if not charge:
+            return "No charge"
+        damage = charge.get("damage") or {}
+        damage_parts = []
+        for key, label in (("em", "EM"), ("thermal", "Therm"), ("kinetic", "Kin"), ("explosive", "Exp")):
+            value = float(damage.get(key) or 0.0)
+            if value > 0.0:
+                damage_parts.append("%s %.0f" % (label, value))
+        suffix = " / ".join(damage_parts[:2])
+        if charge.get("missilePreview"):
+            suffix = "%s%s" % (suffix, " / missile" if suffix else "missile")
+        return "%s  |  %s%s" % (
+            charge.get("name") or charge.get("typeID"),
+            charge.get("groupName") or "Charge",
+            "  |  %s" % suffix if suffix else "",
+        )
+
+    def refresh_charge_options(self, weapon=None):
+        weapon = weapon or self.armed_weapon or {}
+        weapon_type_id = int(weapon.get("typeID") or 0)
+        previous_type_id = int(
+            self.selected_charge_type_by_weapon.get(weapon_type_id) or
+            (self.armed_charge or {}).get("typeID") or
+            0
+        )
+        self.charge_options = list(weapon.get("chargeOptions") or [])
+        selected = 0 if self.charge_options else -1
+        if previous_type_id and self.charge_options:
+            for index, charge in enumerate(self.charge_options):
+                if int(charge.get("typeID") or 0) == previous_type_id:
+                    selected = index
+                    break
+        self.selected_charge_index = selected
+        self.armed_charge = (
+            self.charge_options[selected]
+            if 0 <= selected < len(self.charge_options)
+            else None
+        )
+        if self.armed_charge and weapon_type_id:
+            self.selected_charge_type_by_weapon[weapon_type_id] = int(
+                self.armed_charge.get("typeID") or 0
+            )
+        self.populate_charge_list()
+        self.position_controls()
+
+    def populate_charge_list(self):
+        has_charges = bool(self.armed_weapon and self.charge_options)
+        self.set_control_visible(IDC_CHARGE_LABEL, has_charges)
+        self.set_control_visible(IDC_CHARGE_LIST, has_charges)
+        if not has_charges:
+            self.populate_combo(IDC_CHARGE_LIST, ["Arm weapons to choose charge"], 0)
+            self.selected_charge_index = -1
+            self.armed_charge = None
+            return
+        selected = max(0, min(len(self.charge_options) - 1, int(self.selected_charge_index or 0)))
+        self.populate_combo(
+            IDC_CHARGE_LIST,
+            [self.charge_display_label(charge) for charge in self.charge_options],
+            selected,
+        )
+        self.selected_charge_index = selected
+        self.armed_charge = self.charge_options[selected]
+        weapon_type_id = int((self.armed_weapon or {}).get("typeID") or 0)
+        if weapon_type_id:
+            self.selected_charge_type_by_weapon[weapon_type_id] = int(
+                self.armed_charge.get("typeID") or 0
+            )
+
+    def apply_selected_charge(self):
+        if not self.charge_options:
+            self.armed_charge = None
+            self.selected_charge_index = -1
+            return False
+        selected = self.get_combo_selection(IDC_CHARGE_LIST)
+        if not (0 <= selected < len(self.charge_options)):
+            return False
+        self.selected_charge_index = selected
+        self.armed_charge = self.charge_options[selected]
+        weapon_type_id = int((self.armed_weapon or {}).get("typeID") or 0)
+        if weapon_type_id:
+            self.selected_charge_type_by_weapon[weapon_type_id] = int(
+                self.armed_charge.get("typeID") or 0
+            )
+        self.apply_turret_ammo_color()
+        return True
+
+    def active_missile_preview(self):
+        charge_preview = (self.armed_charge or {}).get("missilePreview")
+        if charge_preview:
+            return charge_preview
+        return (self.armed_weapon or {}).get("missilePreview") or {}
+
+    def active_charge_ammo_color(self):
+        color = (self.armed_charge or {}).get("ammoColor")
+        if isinstance(color, (list, tuple)) and len(color) >= 3:
+            try:
+                return tuple(float(value) for value in color[:4])
+            except Exception:
+                return None
+        return None
+
+    def weapon_search_tokens(self):
+        return [
+            token
+            for token in re.split(r"\s+", native_text(self.weapon_search_text).lower().strip())
+            if token
+        ]
+
     def populate_weapon_list(self):
         size_hint = self.current_ship_size_hint()
         families = self.weapon_family_preferences()
+        tokens = self.weapon_search_tokens()
+
+        def matches(index):
+            if not tokens:
+                return True
+            blob = self.weapon_filter_blobs[index] if index < len(self.weapon_filter_blobs) else ""
+            return all(token in blob for token in tokens)
 
         def score(index):
             weapon = self.weapon_catalog[index]
             family = weapon.get("family")
+            label = self.weapon_display_label(weapon).lower()
             return (
+                0 if not tokens else 0 if any(token in label for token in tokens) else 1,
                 0 if weapon.get("size") == size_hint else 1,
                 families.index(family) if family in families else 50,
                 0 if weapon.get("kind") == "turret" else 1,
                 native_text(weapon.get("name")).lower(),
             )
 
-        self.weapon_display_indices = sorted(range(len(self.weapon_catalog)), key=score)
+        self.weapon_display_indices = sorted(
+            [index for index in range(len(self.weapon_catalog)) if matches(index)],
+            key=score,
+        )
+        self.set_control_text(
+            IDC_WEAPON_STATUS,
+            "%s / %s weapons" % (len(self.weapon_display_indices), len(self.weapon_catalog)),
+        )
+        if not self.weapon_display_indices:
+            self.populate_combo(IDC_WEAPON_LIST, ["No matching weapons"], 0)
+            self.selected_weapon_index = -1
+            return
         default_weapon = self.select_preview_weapon(ignore_combo=True)
         default_display_index = 0
         if default_weapon is not None:
@@ -1888,6 +2099,35 @@ class LiveTrinityViewer(object):
                 return native_text(getattr(obj, "name", "") or fallback)
             except Exception:
                 return native_text(fallback)
+
+        asset_kind = native_text((self.current_asset or {}).get("assetKind")).lower()
+        if asset_kind in ("structure", "station"):
+            for key, label, shield, armor, hull in (
+                ("structure-pristine", "Structure  |  Shield vulnerable", 1.0, 1.0, 1.0),
+                ("structure-armor", "Structure  |  Armor vulnerable", 0.0, 1.0, 1.0),
+                ("structure-hull", "Structure  |  Hull vulnerable", 0.0, 0.0, 1.0),
+                ("structure-burning", "Structure  |  Heavy hull damage", 0.0, 0.0, 0.35),
+            ):
+                add_option(
+                    ("structure-state", key),
+                    label,
+                    "structure-state",
+                    self.space_object,
+                    value=(shield, armor, hull),
+                )
+        if asset_kind == "gate":
+            for value, label in (
+                (0.0, "Gate state 0  |  idle/offline"),
+                (1.0, "Gate state 1  |  powered"),
+                (2.0, "Gate state 2  |  active"),
+            ):
+                add_option(
+                    ("gate-state", value),
+                    label,
+                    "gate-state",
+                    self.space_object,
+                    value=value,
+                )
 
         def exposed_curve_or_controller(obj):
             if obj is None:
@@ -2022,6 +2262,13 @@ class LiveTrinityViewer(object):
                 played = self.safe_call(option.get("controller"), "HandleControllerEvent", name)
         elif kind == "gate-event":
             played = self.activate_gate_event(name) > 0
+        elif kind == "gate-state":
+            self.apply_gate_state(float(option.get("value") or 0.0))
+            played = True
+        elif kind == "structure-state":
+            values = option.get("value") or (1.0, 1.0, 1.0)
+            self.apply_structure_health_state(values[0], values[1], values[2])
+            played = True
         elif kind == "state":
             try:
                 target.value = option.get("value")
@@ -2095,6 +2342,35 @@ class LiveTrinityViewer(object):
             return
         self.handle_search_changed(force=True)
 
+    def schedule_weapon_search_update(self):
+        self.weapon_search_pending = True
+        self.weapon_search_changed_at = time.time()
+
+    def handle_weapon_search_changed(self, force=False):
+        next_text = self.get_control_text(IDC_WEAPON_SEARCH).strip()
+        if not force and next_text == self.weapon_search_text:
+            return
+        self.weapon_search_text = next_text
+        self.weapon_search_pending = False
+        previous_type_id = 0
+        if self.armed_weapon:
+            previous_type_id = int(self.armed_weapon.get("typeID") or 0)
+        self.populate_weapon_list()
+        if previous_type_id and getattr(self, "weapon_display_indices", None):
+            for display_index, catalog_index in enumerate(self.weapon_display_indices):
+                if int(self.weapon_catalog[catalog_index].get("typeID") or 0) == previous_type_id:
+                    USER32.SendMessageA(self.controls.get(IDC_WEAPON_LIST), CB_SETCURSEL, display_index, 0)
+                    self.selected_weapon_index = display_index
+                    break
+
+    def poll_weapon_search_text(self):
+        now = time.time()
+        if not self.weapon_search_pending:
+            return
+        if now - self.weapon_search_changed_at < SEARCH_DEBOUNCE_SECONDS:
+            return
+        self.handle_weapon_search_changed(force=True)
+
     def set_control_enabled(self, control_id, enabled):
         hwnd = self.controls.get(control_id)
         if hwnd:
@@ -2110,7 +2386,8 @@ class LiveTrinityViewer(object):
                 IDC_SKIN_LABEL,
                 IDC_ANIMATION_LABEL,
                 IDC_WEAPON_LABEL,
-                IDC_SOUND_LABEL,
+                IDC_WEAPON_STATUS,
+                IDC_CHARGE_LABEL,
             ):
                 GDI32.SetTextColor(hdc, colorref(112, 226, 255))
             elif control_id in (
@@ -2118,6 +2395,9 @@ class LiveTrinityViewer(object):
                 IDC_ROTATION_SPEED_LABEL,
                 IDC_EXPLOSION_SPEED_LABEL,
                 IDC_HULL_DAMAGE_LABEL,
+                IDC_MODEL_YAW_LABEL,
+                IDC_MODEL_PITCH_LABEL,
+                IDC_MODEL_ROLL_LABEL,
             ):
                 GDI32.SetTextColor(hdc, colorref(190, 214, 230))
             else:
@@ -2159,12 +2439,8 @@ class LiveTrinityViewer(object):
             len(self.skin_options) > 1,
         )
         self.set_control_enabled(
-            IDC_SOUND_LIST,
-            bool(self.audio_preview_events),
-        )
-        self.set_control_enabled(
-            IDC_PLAY_SOUND,
-            bool(self.audio_preview_events),
+            IDC_CHARGE_LIST,
+            bool(self.armed_weapon and self.charge_options),
         )
 
     def sync_control_text(self):
@@ -2190,6 +2466,9 @@ class LiveTrinityViewer(object):
         self.set_control_text(IDC_HULL_DAMAGE_LABEL, "Hull damage %.0f%%" % (
             self.hull_damage_preview * 100.0,
         ))
+        self.set_control_text(IDC_MODEL_YAW_LABEL, "Model yaw %+d deg" % int(self.model_yaw))
+        self.set_control_text(IDC_MODEL_PITCH_LABEL, "Model pitch %+d deg" % int(self.model_pitch))
+        self.set_control_text(IDC_MODEL_ROLL_LABEL, "Model roll %+d deg" % int(self.model_roll))
         self.refresh_action_buttons()
 
     def get_slider_position(self, control_id):
@@ -2213,6 +2492,14 @@ class LiveTrinityViewer(object):
         if control_id == IDC_HULL_DAMAGE:
             self.hull_damage_preview = max(0.0, min(1.0, self.get_slider_position(control_id) / 100.0))
             self.apply_damage_preview()
+            self.sync_control_text()
+            self.update_title(force=True)
+            return 0
+        if control_id in (IDC_MODEL_YAW, IDC_MODEL_PITCH, IDC_MODEL_ROLL):
+            self.model_yaw = float(self.get_slider_position(IDC_MODEL_YAW) - 180)
+            self.model_pitch = float(self.get_slider_position(IDC_MODEL_PITCH) - 180)
+            self.model_roll = float(self.get_slider_position(IDC_MODEL_ROLL) - 180)
+            self.apply_model_orientation()
             self.sync_control_text()
             self.update_title(force=True)
             return 0
@@ -2388,6 +2675,7 @@ class LiveTrinityViewer(object):
             time.sleep(0.03)
 
     def initialize_audio_runtime(self):
+        return False
         if self.audio_ready:
             return True
         if self.audio2 is None:
@@ -2630,6 +2918,7 @@ class LiveTrinityViewer(object):
         return bool(loaded)
 
     def ensure_weapon_audio_runtime(self):
+        return False
         if not self.weapon_audio_enabled:
             return False
         required_banks = [
@@ -2724,6 +3013,7 @@ class LiveTrinityViewer(object):
         return "interface.bnk" in normalized_banks
 
     def send_audio_event(self, event_name):
+        return False
         event_name = native_text(event_name)
         if not event_name:
             return False
@@ -3127,6 +3417,7 @@ class LiveTrinityViewer(object):
             self.attach_audio_emitter_to_model()
         self.apply_booster_state(rebuild=True)
         self.apply_damage_preview()
+        self.apply_model_orientation()
         self.pump_resource_loads("space object")
         self.model_radius = float(space_object.GetBoundingSphereRadius())
         self.model_center = tuple(space_object.GetBoundingSphereCenter())
@@ -3136,6 +3427,7 @@ class LiveTrinityViewer(object):
         self.populate_skin_list()
         self.populate_animation_list()
         self.populate_weapon_list()
+        self.populate_charge_list()
         self.refresh_action_buttons()
 
     def get_sof_factory(self):
@@ -3478,6 +3770,11 @@ class LiveTrinityViewer(object):
                 self.safe_call(self.space_object, "RebuildTurretPositions")
         self.armed_turret_sets = []
         self.armed_weapon = None
+        self.charge_options = []
+        self.selected_charge_index = -1
+        self.armed_charge = None
+        self.populate_charge_list()
+        self.position_controls()
         if self.dummy_target is not None:
             self.remove_scene_object(self.dummy_target)
             self.dummy_target = None
@@ -3571,6 +3868,10 @@ class LiveTrinityViewer(object):
             if 0 <= selected < len(self.weapon_display_indices):
                 self.selected_weapon_index = selected
                 return self.weapon_catalog[self.weapon_display_indices[selected]]
+        if not ignore_combo and native_text(getattr(self, "weapon_search_text", "")).strip():
+            if getattr(self, "weapon_display_indices", None):
+                return self.weapon_catalog[self.weapon_display_indices[0]]
+            return None
         size_hint = self.current_ship_size_hint()
         families = self.weapon_family_preferences()
 
@@ -3763,11 +4064,12 @@ class LiveTrinityViewer(object):
             turret_set.firingEffect = effect
         except Exception:
             return False
+        self.apply_turret_ammo_color_to_effect(effect, self.active_charge_ammo_color())
         self.safe_call(effect, "StartControllers")
         return True
 
     def get_preview_flight_seconds(self):
-        preview = (self.armed_weapon or {}).get("missilePreview") or {}
+        preview = self.active_missile_preview()
         authored = float(preview.get("flightTimeSeconds") or 2.5)
         distance = math.sqrt(sum(
             (float(self.dummy_target_position[index]) - float(self.model_center[index])) ** 2
@@ -3778,7 +4080,7 @@ class LiveTrinityViewer(object):
         return max(2.4, min(5.5, max(physical, authored * 0.25)))
 
     def spawn_authored_missile(self, turret_set, target):
-        preview = (self.armed_weapon or {}).get("missilePreview") or {}
+        preview = self.active_missile_preview()
         missile_path = preview.get("missilePath")
         if not missile_path:
             return False
@@ -3963,11 +4265,13 @@ class LiveTrinityViewer(object):
             print("[live] selected asset has no turret locators", file=sys.stderr)
             return
         audio_ready = False
-        self.clear_preview_weapons()
         weapon = self.select_preview_weapon()
         if not weapon:
             print("[live] no weapon preview resources in catalog", file=sys.stderr)
             return
+        self.clear_preview_weapons()
+        self.armed_weapon = weapon
+        self.refresh_charge_options(weapon)
         locator_count = min(32, self.get_turret_locator_count())
         if locator_count <= 0:
             print("[live] selected asset has no turret locator count", file=sys.stderr)
@@ -4026,7 +4330,7 @@ class LiveTrinityViewer(object):
             self.assign_turret_target(turret_set, target)
             self.configure_turret_firing_effect(turret_set, target)
             self.safe_call(turret_set, "EnterStateIdle")
-        self.armed_weapon = weapon
+        self.apply_turret_ammo_color()
         self.pump_resource_loads("weapon preview", 1.5)
         self.sync_control_text()
         self.update_title(force=True)
@@ -4036,14 +4340,11 @@ class LiveTrinityViewer(object):
             weapon.get("name"),
             weapon.get("resourcePath"),
         ), file=sys.stderr)
-        if not audio_ready:
-            print("[live] weapon audio unavailable; firing visuals remain enabled", file=sys.stderr)
-
     def fire_preview_weapons_once(self):
         target = self.ensure_dummy_target()
         if target is None:
             return
-        audio_ready = self.ensure_weapon_audio_runtime()
+        audio_ready = False
         fired_any = False
         for turret_set in list(self.armed_turret_sets):
             self.assign_turret_target(turret_set, target)
@@ -4638,6 +4939,114 @@ class LiveTrinityViewer(object):
         changed = self.set_controller_variable("HullDamage", hull_health) or changed
         return changed
 
+    def apply_structure_health_state(self, shield_health, armor_health, hull_health):
+        if self.space_object is None:
+            return False
+        shield_health = max(0.0, min(1.0, float(shield_health)))
+        armor_health = max(0.0, min(1.0, float(armor_health)))
+        hull_health = max(0.0, min(1.0, float(hull_health)))
+        changed = False
+        if hasattr(self.space_object, "SetImpactDamageState"):
+            try:
+                self.space_object.SetImpactDamageState(
+                    shield_health,
+                    armor_health,
+                    hull_health,
+                    True,
+                )
+                changed = True
+            except Exception:
+                pass
+        changed = self.set_controller_variable("ShieldDamage", shield_health) or changed
+        changed = self.set_controller_variable("ArmorDamage", armor_health) or changed
+        changed = self.set_controller_variable("HullDamage", hull_health) or changed
+        if hasattr(self.space_object, "StartControllers"):
+            self.safe_call(self.space_object, "StartControllers")
+        if changed:
+            self.pump_resource_loads("structure health state", 0.25)
+        return changed
+
+    def apply_gate_state(self, state_value):
+        if self.space_object is None:
+            return False
+        state_value = max(0.0, min(2.0, float(state_value or 0.0)))
+        changed = False
+        for target in self.iter_gate_activation_targets():
+            for variable_name in ("state", "State", "GateState", "gateState"):
+                if self.safe_call(target, "SetControllerVariable", variable_name, state_value):
+                    changed = True
+            if self.safe_call(target, "HandleControllerEvent", "state_%d" % int(state_value)):
+                changed = True
+            if self.safe_call(target, "StartControllers"):
+                changed = True
+        if changed:
+            self.pump_resource_loads("gate state %.0f" % state_value, 0.25)
+        return changed
+
+    def apply_model_orientation(self):
+        if self.space_object is None or self.geo2 is None:
+            return False
+        try:
+            yaw = math.radians(float(self.model_yaw or 0.0))
+            pitch = math.radians(float(self.model_pitch or 0.0))
+            roll = math.radians(float(self.model_roll or 0.0))
+            rotation = self.geo2.QuaternionRotationSetYawPitchRoll(yaw, pitch, roll)
+        except Exception:
+            return False
+        applied = False
+        for attr_name in ("rotationCurve", "modelRotationCurve"):
+            try:
+                if hasattr(self.space_object, attr_name):
+                    curve = self.make_rotation_curve()
+                    if curve is not None:
+                        curve.value = rotation
+                        setattr(self.space_object, attr_name, curve)
+                        applied = True
+            except Exception:
+                pass
+        try:
+            if hasattr(self.space_object, "rotation"):
+                self.space_object.rotation = rotation
+                applied = True
+        except Exception:
+            pass
+        return applied
+
+    def apply_turret_ammo_color_to_effect(self, obj, color):
+        if obj is None or not color:
+            return False
+        applied = False
+        roots = [obj]
+        roots.extend(list(getattr(obj, "stretch", []) or []))
+        for root in roots:
+            try:
+                curves = list(self.blue.FindInterface(root, "Tr2CurveConstant") or [])
+            except Exception:
+                curves = []
+            for curve in curves:
+                if native_text(getattr(curve, "name", "")).lower() != "ammo":
+                    continue
+                try:
+                    curve.value = tuple(color)
+                    curve.UpdateValue(0.0)
+                    applied = True
+                except Exception:
+                    pass
+        return applied
+
+    def apply_turret_ammo_color(self):
+        color = self.active_charge_ammo_color()
+        if not color:
+            return False
+        changed = False
+        for turret_set in list(self.armed_turret_sets):
+            changed = self.apply_turret_ammo_color_to_effect(turret_set, color) or changed
+            changed = self.apply_turret_ammo_color_to_effect(
+                getattr(turret_set, "firingEffect", None),
+                color,
+            ) or changed
+        return changed
+
     def toggle_boosters(self):
         self.boosters_enabled = not self.boosters_enabled
         if not self.apply_booster_state(rebuild=True):
@@ -4979,9 +5388,17 @@ class LiveTrinityViewer(object):
     def reset_camera(self):
         self.yaw = 0.0
         self.pitch = 0.22
+        self.model_yaw = 0.0
+        self.model_pitch = 0.0
+        self.model_roll = 0.0
+        self.configure_slider(IDC_MODEL_YAW, 0, 360, 180, 45)
+        self.configure_slider(IDC_MODEL_PITCH, 0, 360, 180, 45)
+        self.configure_slider(IDC_MODEL_ROLL, 0, 360, 180, 45)
         self.zoom = 1.0
         self.camera_pan = [0.0, 0.0, 0.0]
+        self.apply_model_orientation()
         self.update_camera()
+        self.sync_control_text()
         self.update_title(force=True)
 
     def handle_key(self, key):
@@ -5030,6 +5447,10 @@ class LiveTrinityViewer(object):
             if notification == EN_CHANGE:
                 self.schedule_search_update()
             return 0
+        if control_id == IDC_WEAPON_SEARCH:
+            if notification == EN_CHANGE:
+                self.schedule_weapon_search_update()
+            return 0
         if control_id in dict(FILTER_CONTROLS):
             self.handle_search_changed(force=True)
             return 0
@@ -5068,17 +5489,17 @@ class LiveTrinityViewer(object):
         elif control_id == IDC_SKIN_LIST:
             if notification == CBN_SELCHANGE:
                 self.apply_selected_skin()
-        elif control_id == IDC_SOUND_LIST:
-            if notification == CBN_SELCHANGE:
-                self.selected_audio_index = self.get_combo_selection(IDC_SOUND_LIST)
-                self.update_title(force=True)
-        elif control_id == IDC_PLAY_SOUND:
-            self.play_selected_sound()
         elif control_id == IDC_RESET_CAMERA:
             self.reset_camera()
         elif control_id == IDC_WEAPON_LIST:
             if notification == CBN_SELCHANGE:
                 self.selected_weapon_index = self.get_combo_selection(IDC_WEAPON_LIST)
+                if self.armed_turret_sets:
+                    self.arm_max_turrets()
+                self.update_title(force=True)
+        elif control_id == IDC_CHARGE_LIST:
+            if notification == CBN_SELCHANGE:
+                self.apply_selected_charge()
                 self.update_title(force=True)
         else:
             return None
@@ -5301,6 +5722,16 @@ class LiveTrinityViewer(object):
             self.apply_damage_preview()
             self.sync_control_text()
             self.update_title(force=True)
+        elif command == "modelorientation":
+            self.model_yaw = max(-180.0, min(180.0, float(payload.get("yaw") or 0.0)))
+            self.model_pitch = max(-180.0, min(180.0, float(payload.get("pitch") or 0.0)))
+            self.model_roll = max(-180.0, min(180.0, float(payload.get("roll") or 0.0)))
+            self.configure_slider(IDC_MODEL_YAW, 0, 360, int(self.model_yaw + 180), 45)
+            self.configure_slider(IDC_MODEL_PITCH, 0, 360, int(self.model_pitch + 180), 45)
+            self.configure_slider(IDC_MODEL_ROLL, 0, 360, int(self.model_roll + 180), 45)
+            self.apply_model_orientation()
+            self.sync_control_text()
+            self.update_title(force=True)
         elif command == "quality":
             self.set_ultra_quality()
         elif command == "next":
@@ -5334,6 +5765,7 @@ class LiveTrinityViewer(object):
         now = time.time()
         self.poll_external_commands()
         self.poll_search_text()
+        self.poll_weapon_search_text()
         if not self.paused:
             self.yaw += 0.0026 * self.rotation_speed
         if self.firing_dummy and now >= self.next_dummy_fire_at:

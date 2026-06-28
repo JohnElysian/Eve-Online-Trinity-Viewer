@@ -133,6 +133,9 @@ function normalizeGraphicRow(row) {
     sofMaterialSetID: row && row.sofMaterialSetID || null,
     graphicFile: row && row.graphicFile || null,
     explosionBucketID: Number(row && row.explosionBucketID) || null,
+    ammoColor: Array.isArray(row && row.ammoColor)
+      ? row.ammoColor.map(Number).slice(0, 4)
+      : null,
   };
 }
 
@@ -499,6 +502,103 @@ function buildMissilePreviewByLauncherGroup(
   ]));
 }
 
+function missilePreviewForCharge(row, graphicsByID, dogmaByType, groupGraphicsByID, resIndex) {
+  const attributes = dogmaByType.get(Number(row && row.typeID)) || new Map();
+  const impactGraphic = graphicsByID.get(Number(row && row.graphicID));
+  const flightGraphicIDs = groupGraphicsByID.get(Number(row && row.groupID)) || [];
+  const flightGraphic = flightGraphicIDs
+    .map((graphicID) => graphicsByID.get(graphicID))
+    .find((graphic) => graphic && graphic.graphicFile);
+  if (!impactGraphic || !impactGraphic.graphicFile || !flightGraphic) {
+    return null;
+  }
+  const missilePath = resolveClientResourcePath(resIndex, flightGraphic.graphicFile);
+  const impactPath = resolveClientResourcePath(resIndex, impactGraphic.graphicFile);
+  if (!missilePath || !impactPath) {
+    return null;
+  }
+  return {
+    ammoTypeID: Number(row.typeID) || 0,
+    ammoName: row.name || row.typeName || `Charge ${row.typeID}`,
+    missilePath,
+    impactPath,
+    maxVelocity: Number(attributes.get(37)) || 0,
+    flightTimeSeconds: Math.max(0.5, (Number(attributes.get(281)) || 3000) / 1000),
+  };
+}
+
+function ammoColorForCharge(row, graphicsByID) {
+  const graphic = graphicsByID.get(Number(row && row.graphicID) || 0);
+  const color = graphic && graphic.ammoColor;
+  return Array.isArray(color) && color.length >= 3 ? color : null;
+}
+
+function buildChargeCatalog(itemTypes, graphicsByID, dogmaByType, groupGraphicsByID, resIndex) {
+  const charges = [];
+  for (const row of (itemTypes && itemTypes.types) || []) {
+    if (!row || Number(row.categoryID) !== 8 || row.published !== true) {
+      continue;
+    }
+    const attributes = dogmaByType.get(Number(row.typeID)) || new Map();
+    const charge = {
+      typeID: Number(row.typeID) || 0,
+      name: row.name || row.typeName || `Charge ${row.typeID}`,
+      groupID: Number(row.groupID) || 0,
+      groupName: row.groupName || "Charge",
+      chargeSize: Number(attributes.get(128)) || 0,
+      damage: {
+        em: Number(attributes.get(114)) || 0,
+        explosive: Number(attributes.get(116)) || 0,
+        kinetic: Number(attributes.get(117)) || 0,
+        thermal: Number(attributes.get(118)) || 0,
+      },
+      ammoColor: ammoColorForCharge(row, graphicsByID),
+      missilePreview: missilePreviewForCharge(
+        row,
+        graphicsByID,
+        dogmaByType,
+        groupGraphicsByID,
+        resIndex,
+      ),
+    };
+    charges.push(charge);
+  }
+  charges.sort((left, right) => left.name.localeCompare(right.name));
+  return charges;
+}
+
+function chargeMatchesWeapon(charge, weapon) {
+  const acceptedGroups = weapon && weapon.chargeGroupIDs || [];
+  if (!acceptedGroups.includes(Number(charge && charge.groupID) || 0)) {
+    return false;
+  }
+  const requiredSize = Number(weapon && weapon.chargeSize) || 0;
+  const chargeSize = Number(charge && charge.chargeSize) || 0;
+  return requiredSize <= 0 || requiredSize === chargeSize;
+}
+
+function compatibleChargeOptions(weapon, chargeCatalog) {
+  const options = (chargeCatalog || [])
+    .filter((charge) => chargeMatchesWeapon(charge, weapon))
+    .map((charge) => ({
+      typeID: charge.typeID,
+      name: charge.name,
+      groupID: charge.groupID,
+      groupName: charge.groupName,
+      chargeSize: charge.chargeSize,
+      damage: charge.damage,
+      ammoColor: charge.ammoColor,
+      missilePreview: charge.missilePreview,
+    }));
+  options.sort((left, right) => {
+    const leftNavy = /navy|imperial|federation|republic|caldari/.test(String(left.name).toLowerCase()) ? 1 : 0;
+    const rightNavy = /navy|imperial|federation|republic|caldari/.test(String(right.name).toLowerCase()) ? 1 : 0;
+    if (leftNavy !== rightNavy) return rightNavy - leftNavy;
+    return left.name.localeCompare(right.name);
+  });
+  return options;
+}
+
 function buildWeaponPreviewCatalog(
   itemTypes,
   graphicsByID,
@@ -509,6 +609,7 @@ function buildWeaponPreviewCatalog(
   const rows = (itemTypes && itemTypes.types) || [];
   const weapons = [];
   const seenPaths = new Set();
+  const chargeCatalog = buildChargeCatalog(itemTypes, graphicsByID, dogmaByType, groupGraphicsByID, resIndex);
   const missilePreviewByLauncherGroup = buildMissilePreviewByLauncherGroup(
     itemTypes,
     graphicsByID,
@@ -550,6 +651,10 @@ function buildWeaponPreviewCatalog(
       family: classification.family,
       variant: classification.variant,
       size: classification.size,
+      chargeGroupIDs: [604, 605, 606, 609, 610]
+        .map((attributeID) => Number((dogmaByType.get(Number(row.typeID)) || new Map()).get(attributeID)) || 0)
+        .filter((groupID) => groupID > 0),
+      chargeSize: Number((dogmaByType.get(Number(row.typeID)) || new Map()).get(128)) || 0,
       sof: {
         hull: graphic.sofHullName || null,
         faction: graphic.sofFactionName || null,
@@ -561,6 +666,13 @@ function buildWeaponPreviewCatalog(
         missilePreviewByLauncherGroup.get(Number(row.groupID)) ||
         missilePreviewByLauncherGroup.get(launcherGroupAliases.get(Number(row.groupID))) ||
         null;
+    }
+    const chargeOptions = compatibleChargeOptions(weapon, chargeCatalog);
+    if (chargeOptions.length > 0) {
+      weapon.chargeOptions = chargeOptions;
+      if (classification.kind === "launcher" && !weapon.missilePreview) {
+        weapon.missilePreview = (chargeOptions.find((charge) => charge.missilePreview) || {}).missilePreview || null;
+      }
     }
     weapons.push(weapon);
   }
@@ -738,7 +850,6 @@ function buildCatalog(options = {}) {
   const skinLicensesPath = findFirst(latestExport, "skinlicenses.jsonl");
   const skinMaterialsPath = findFirst(latestExport, "skinmaterials.jsonl");
   const localizationPath = findFirst(latestExport, "localization_fsd_en-us.jsonl");
-  const soundIDsPath = findFirst(latestExport, "soundids.jsonl");
   const itemTypesPath = path.join(REPO_ROOT, "server", "src", "newDatabase", "data", "itemTypes", "data.json");
   const shipTypesPath = path.join(REPO_ROOT, "server", "src", "newDatabase", "data", "shipTypes", "data.json");
   const itemTypes = readJson(itemTypesPath, {});
@@ -817,7 +928,7 @@ function buildCatalog(options = {}) {
     return left.name.localeCompare(right.name);
   });
   const nebulas = buildNebulaCatalog(resIndex);
-  const audioEvents = buildAudioEventCatalog(readJsonl(soundIDsPath));
+  const audioEvents = [];
   return {
     generatedAt: new Date().toISOString(),
     format: "elysian-jessica-standalone-catalog-v3",
@@ -831,7 +942,6 @@ function buildCatalog(options = {}) {
       skinLicensesPath,
       skinMaterialsPath,
       localizationPath,
-      soundIDsPath,
       itemTypesPath,
       shipTypesPath,
       typeDogmaPath,

@@ -1,5 +1,39 @@
 # Changelog
 
+## v0.4.0 - Search, Charges, And Model Rotation
+
+Jessica v0.4.0 removes the unstable sound-preview experiment and focuses the
+public build back on the native visual viewer: fast catalogue search, weapon
+charge previews, and cinematic model rotation.
+
+### Added
+
+- Weapon charge selection beneath the Weapon control after arming.
+- Exact charge compatibility from EVE dogma charge-group and charge-size data.
+- Authored charge colours from `graphicIDs.ammoColor`, bound to Trinity's
+  native `Ammo` curve where the firing effect exposes one.
+- Missile preview switching from the selected missile charge.
+- Model yaw, pitch, and roll controls for turning ships, gates, stations, and
+  structures into better screenshot angles.
+- Wider search/result support so broad searches can expose the full result set
+  without stopping at the old first-page cap.
+
+### Changed
+
+- Sound preview controls have been removed from the public viewer. Native
+  firing, explosion, SKIN, nebula, animation, and model inspection visuals stay
+  intact; the fragile `_audio2` preview path is no longer exposed.
+- The bundled metadata catalogue has been rebuilt with exact weapon charge
+  mappings and authored ammo colours.
+- Charge selection persists per weapon family instead of snapping back to the
+  default charge whenever the model is rearmed.
+
+### Notes
+
+- Requires a local EVE Online installation.
+- This release does not include EVE client assets, audio banks, models,
+  textures, or binaries.
+
 ## v0.3.3 - Native Audio And Explosion Playback
 
 Jessica v0.3.3 fixes native sound playback and restores explosion playback
